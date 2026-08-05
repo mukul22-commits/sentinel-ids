@@ -1,0 +1,39 @@
+# ---- Environment files (keep only templates) ----
+.env
+.env.*
+!.env.example
+!.env.test
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Node ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Logs ----
+*.log
+
+# ---- Packet captures (Phase 2) ----
+*.pcap
+*.pcapng
+
+# ---- Docker volumes / local state ----
+.volumes/

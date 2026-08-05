@@ -1,0 +1,23 @@
+"""API v1 router aggregator."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from app.api.v1.deps import get_request_id
+from app.api.v1.endpoints.alerts import router as alerts_router
+from app.api.v1.endpoints.packets import router as packets_router
+from app.api.v1.endpoints.system import router as system_router
+from app.schemas.common import Envelope
+
+api_router = APIRouter(prefix="/api/v1")
+
+api_router.include_router(system_router)
+api_router.include_router(packets_router)
+api_router.include_router(alerts_router)
+
+
+@api_router.get("/ping", tags=["system"], response_model=Envelope[str])
+async def ping(request_id: str = Depends(get_request_id)) -> Envelope[str]:
+    """Liveness probe for the v1 API surface."""
+    return Envelope(success=True, data="pong", request_id=request_id)

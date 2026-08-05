@@ -1,0 +1,25 @@
+# Development overrides: hot-reload via source mounts + reload commands.
+# Applied automatically when running `docker compose` from infra/.
+
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ../backend/app:/app/app
+      - ../backend/alembic:/app/alembic
+      - ../backend/alembic.ini:/app/alembic.ini
+
+  worker:
+    volumes:
+      - ../backend/app:/app/app
+      - ../backend/alembic:/app/alembic
+      - ../backend/alembic.ini:/app/alembic.ini
+
+  frontend:
+    volumes:
+      - ../frontend/src:/app/src
+      - ../frontend/index.html:/app/index.html
+      - ../frontend/vite.config.ts:/app/vite.config.ts
+      - ../frontend/tailwind.config.js:/app/tailwind.config.js
+      - ../frontend/postcss.config.js:/app/postcss.config.js
+      - /app/node_modules
