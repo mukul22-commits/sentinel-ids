@@ -1,4 +1,4 @@
-"""Detection rule schemas (rules engine lands in Phase 5)."""
+"""Detection rule schemas (rules engine, Phase 5)."""
 
 from __future__ import annotations
 
@@ -21,9 +21,25 @@ class RuleCreate(RuleBase):
     pass
 
 
+class RuleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    yaml_content: str | None = None
+    category: str | None = None
+    severity: str | None = None
+    enabled: bool | None = None
+
+
 class RuleRead(RuleBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class RuleList(BaseModel):
+    items: list[RuleRead]
+    total: int
+    page: int
+    page_size: int

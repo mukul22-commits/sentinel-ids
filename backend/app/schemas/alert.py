@@ -1,14 +1,17 @@
-"""Alert schemas (detection engine lands in Phase 5)."""
+"""Alert schemas (detection engine, Phase 5)."""
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 
 class AlertBase(BaseModel):
+    title: str | None = None
     rule_id: int | None = None
+    detector: str | None = None
     severity: str
     category: str
     src_ip: str
@@ -17,6 +20,7 @@ class AlertBase(BaseModel):
     dst_port: int | None = None
     risk_score: float
     status: str = "new"
+    details: dict[str, Any] | None = None
 
 
 class AlertCreate(AlertBase):
@@ -28,3 +32,14 @@ class AlertRead(AlertBase):
 
     id: int
     created_at: datetime
+
+
+class AlertList(BaseModel):
+    items: list[AlertRead]
+    total: int
+    page: int
+    page_size: int
+
+
+class AlertStatusUpdate(BaseModel):
+    status: str

@@ -1,12 +1,9 @@
-"""Test environment setup. Loaded before any test module imports the app."""
+"""Pytest bootstrap: force the test environment before app modules load."""
 
 from __future__ import annotations
 
 import os
 
 os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+asyncpg://sentinel:sentinel@localhost:59999/sentinel_ids_test",
-)
-os.environ.setdefault("REDIS_URL", "redis://localhost:59999/0")
+os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6390/0")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")

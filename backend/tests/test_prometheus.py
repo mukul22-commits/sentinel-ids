@@ -14,3 +14,4 @@ def test_metrics_endpoint_exposes_sentinel_metrics() -> None:
     body = response.text
     assert "sentinel_app_info" in body
     assert 'app="sentinel-ids"' in body
+    assert "sentinel_alerts_created_total" in body

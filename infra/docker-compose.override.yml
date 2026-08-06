@@ -20,6 +20,4 @@ services:
       - ../frontend/src:/app/src
       - ../frontend/index.html:/app/index.html
       - ../frontend/vite.config.ts:/app/vite.config.ts
-      - ../frontend/tailwind.config.js:/app/tailwind.config.js
-      - ../frontend/postcss.config.js:/app/postcss.config.js
       - /app/node_modules

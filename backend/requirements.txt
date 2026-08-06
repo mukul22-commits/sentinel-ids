@@ -8,6 +8,15 @@ alembic==1.15.2
 redis==5.2.1
 celery==5.5.1
 prometheus-fastapi-instrumentator==7.0.0
+bcrypt==5.0.0
+PyJWT==2.13.0
+slowapi==0.1.10
+limits==5.8.0
+PyYAML==6.0.3
+scapy==2.6.1
+python-multipart==0.0.20
+scikit-learn==1.9.0
+joblib==1.5.0
 pytest==8.3.5
 pytest-asyncio==0.26.0
 httpx==0.28.1

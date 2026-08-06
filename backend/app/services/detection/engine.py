@@ -1,0 +1,94 @@
+"""Detection engine: runs detectors over records, dedupes, persists (Phase 5)."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Sequence
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.constants import INCIDENT_ALERTING_SEVERITIES
+from app.core.rbac import ROLE_ADMIN, ROLE_ANALYST
+from app.models.alert import Alert
+from app.models.user import User
+from app.schemas.alert import AlertCreate
+from app.services.alert_service import create_many
+from app.services.detection.base import Detector
+from app.services.detection.ml import MLDetector
+from app.services.detection.signature import SignatureDetector
+from app.services.notification_service import create_notification
+
+logger = logging.getLogger("sentinel.detection.engine")
+
+
+def _dedupe(alerts: Sequence[AlertCreate]) -> list[AlertCreate]:
+    """Collapse duplicate detections within a single batch."""
+    seen: set[tuple[Any, ...]] = set()
+    unique: list[AlertCreate] = []
+    for alert in alerts:
+        key = (
+            alert.rule_id,
+            alert.detector,
+            alert.src_ip,
+            alert.src_port,
+            alert.dst_ip,
+            alert.dst_port,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(alert)
+    return unique
+
+
+class DetectionEngine:
+    """Runs the configured detectors over a batch of records."""
+
+    def __init__(self, detectors: list[Detector] | None = None) -> None:
+        self.detectors = detectors if detectors is not None else [SignatureDetector(), MLDetector()]
+
+    async def run(self, db: AsyncSession, records: list[dict[str, Any]]) -> list[Alert]:
+        """Detect, persist, and broadcast alerts for the given records."""
+        if not records:
+            return []
+        collected: list[AlertCreate] = []
+        for detector in self.detectors:
+            if not detector.enabled():
+                continue
+            try:
+                collected.extend(await detector.detect(db, records))
+            except Exception:
+                logger.exception("detector %s failed", detector.name)
+
+        alerts = await create_many(db, _dedupe(collected))
+        if alerts:
+            logger.info("detection engine raised %d alert(s)", len(alerts))
+            await self._notify_staff(db, alerts)
+        return alerts
+
+    @staticmethod
+    async def _notify_staff(db: AsyncSession, alerts: list[Alert]) -> None:
+        urgent = [a for a in alerts if a.severity in INCIDENT_ALERTING_SEVERITIES]
+        if not urgent:
+            return
+        user_ids = (
+            await db.scalars(
+                select(User.id).where(
+                    User.is_active.is_(True), User.role.in_([ROLE_ADMIN, ROLE_ANALYST])
+                )
+            )
+        ).all()
+        for alert in urgent:
+            for user_id in user_ids:
+                await create_notification(
+                    db,
+                    user_id=int(user_id),
+                    title=f"{alert.severity} alert: {alert.title or alert.category}",
+                    body=f"{alert.src_ip} -> {alert.dst_ip}",
+                    severity=alert.severity,
+                )
+
+
+detection_engine = DetectionEngine()

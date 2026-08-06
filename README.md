@@ -76,6 +76,9 @@ alembic upgrade head
 | Flower (Celery UI) | http://localhost:5555 (profile `dev`) |
 | PostgreSQL (TimescaleDB) | localhost:5432 (`sentinel` / `sentinel`) |
 | Redis    | localhost:6379                     |
+| Prometheus | http://localhost:9090              |
+| Grafana  | http://localhost:3000 (admin / admin) |
+| Loki     | http://localhost:3100              |
 
 ## API endpoints
 
@@ -88,8 +91,20 @@ alembic upgrade head
 | GET    | `/api/v1/ping`      | `{"success": true, "data": "pong", ...}` |
 | GET    | `/api/v1/system/info`  | App metadata (enveloped)              |
 | GET    | `/api/v1/system/stats` | Uptime stats, Redis-cached (`X-Cache` header) |
-| GET    | `/api/v1/packets`   | Stub (Phase 5)                            |
-| GET    | `/api/v1/alerts`    | Stub (Phase 5)                            |
+| GET    | `/api/v1/packets`      | List captured packets (filters: src/dst IP+port, protocol, since) |
+| POST   | `/api/v1/packets`      | Ingest pcap upload, run detection, return ingest + alert summary |
+| POST   | `/api/v1/packets/import` | Bulk pcap import (same detection pipeline) |
+| GET    | `/api/v1/alerts`       | List alerts (filters: severity, status, detector, src_ip, since) |
+| POST   | `/api/v1/alerts`       | Batch-create alerts (≤500)            |
+| GET    | `/api/v1/alerts/{id}`  | Alert detail                          |
+| PATCH  | `/api/v1/alerts/{id}/status` | Update alert status (open/in_progress/resolved/closed) |
+| GET    | `/api/v1/rules`        | List detection rules (search, severity, enabled filters) |
+| POST   | `/api/v1/rules`        | Create YAML signature rule            |
+| GET/PATCH/DELETE | `/api/v1/rules/{id}` | Read / update (version-bumped) / delete a rule |
+| GET    | `/api/v1/iocs`         | List IOCs (type, source, search filters) |
+| POST   | `/api/v1/iocs`         | Create IOC                          |
+| POST   | `/api/v1/iocs/bulk`    | Upsert 1–500 IOCs at once          |
+| GET/PATCH/DELETE | `/api/v1/iocs/{id}` | Read / update / delete an IOC      |
 
 All `/api/v1/*` responses use the envelope:
 `{"success": bool, "data": ..., "error": null, "request_id": "..."}`. Every response carries
@@ -226,8 +241,8 @@ composite `(id, ts)`.
 
 ## Frontend stack note
 
-Tailwind **v3** was chosen for Phase 1 (stable, matches the required `tailwind.config.js` +
-`@tailwind` directives). Upgrading to Tailwind v4 is a documented follow-up in Phase 5.
+Frontend runs **Tailwind v4** (v4.3) via the `@tailwindcss/vite` plugin — CSS-first config
+(`@import "tailwindcss"` in `src/index.css`), no `tailwind.config.js` / `postcss.config.js`.
 
 ## Troubleshooting
 

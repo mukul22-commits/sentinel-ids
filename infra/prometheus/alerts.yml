@@ -1,0 +1,25 @@
+groups:
+  - name: sentinel-ids
+    rules:
+      - alert: SentinelAlertSpike
+        expr: |
+          sum(rate(sentinel_alerts_created_total[5m])) by (severity) > 10
+        for: 2m
+        labels:
+          severity: page
+          team: soc
+        annotations:
+          summary: "Alert spike ({{ $labels.severity }})"
+          description: "More than 10 alerts per minute at severity {{ $labels.severity }} over the last 5 minutes."
+
+      - alert: SentinelHttpErrors
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "HTTP 5xx error rate above 5%"
+          description: "5xx responses exceeded 5% of traffic over the last 5 minutes."

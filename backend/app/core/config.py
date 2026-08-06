@@ -44,10 +44,42 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     SECRET_KEY: str = "change-me-in-production"
 
+    # --- Auth (Phase 3) ---
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ISSUER: str = "sentinel-ids"
+    JWT_AUDIENCE: str = "sentinel-ids-api"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    BCRYPT_ROUNDS: int = 12
+    PASSWORD_RESET_TTL_MINUTES: int = 15
+    LOGIN_MAX_FAILED_ATTEMPTS: int = 5
+    LOGIN_LOCKOUT_MINUTES: int = 15
+    MIN_PASSWORD_LENGTH: int = 12
+
+    # --- Rate limiting (Phase 3) ---
+    RATE_LIMIT_AUTH: str = "5/minute"
+    RATE_LIMIT_API: str = "100/minute"
+
+    # --- Detection engine (Phase 5) ---
+    DETECTION_ENABLED: bool = True
+    ML_DETECTOR_ENABLED: bool = False
+    ML_MODEL_PATH: str = "app/ml_models/flow_anomaly.joblib"
+
+    @property
+    def rate_limit_storage_uri(self) -> str:
+        """Rate-limit storage: in-memory for tests, Redis for dev/prod."""
+        if self.ENVIRONMENT == "test":
+            return "memory://"
+        return self.REDIS_URL
+
     @model_validator(mode="after")
     def validate_environment(self) -> Self:
-        if self.ENVIRONMENT == "prod" and self.SECRET_KEY == "change-me-in-production":
-            raise ValueError("SECRET_KEY must be set to a strong value in production")
+        if self.ENVIRONMENT == "prod" and (
+            self.SECRET_KEY == "change-me-in-production" or len(self.SECRET_KEY) < 32
+        ):
+            raise ValueError(
+                "SECRET_KEY must be a strong value of at least 32 characters in production"
+            )
         if not self.DATABASE_URL.startswith("postgresql+asyncpg://"):
             raise ValueError("DATABASE_URL must use the asyncpg driver (postgresql+asyncpg://)")
         return self

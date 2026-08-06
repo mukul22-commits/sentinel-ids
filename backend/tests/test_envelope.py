@@ -37,13 +37,13 @@ def test_security_headers_set() -> None:
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
 
 
-def test_stub_endpoints_return_envelopes() -> None:
+def test_phase5_endpoints_require_auth() -> None:
     with TestClient(app) as client:
         packets_response = client.get("/api/v1/packets")
         alerts_response = client.get("/api/v1/alerts")
-    assert packets_response.status_code == 200
-    assert packets_response.json()["success"] is True
-    assert packets_response.json()["data"] == []
-    assert alerts_response.status_code == 200
-    assert alerts_response.json()["success"] is True
-    assert alerts_response.json()["data"] == []
+        rules_response = client.get("/api/v1/rules")
+        iocs_response = client.get("/api/v1/iocs")
+    assert packets_response.status_code == 401
+    assert alerts_response.status_code == 401
+    assert rules_response.status_code == 401
+    assert iocs_response.status_code == 401
