@@ -1,13 +1,12 @@
-"""Train and serialize the flow anomaly detector used by the ML detector.
+"""Train and serialize the flow autoencoder used by the autoencoder detector.
 
-Generates a labeled synthetic corpus of normal web-browsing flows and
-anomalous flows (port scans, data exfiltration), fits an unsupervised
-IsolationForest over the fixed-dimension feature vector (see
-``app/services/detection/ml.py::flow_features``), and persists it to
-``settings.ML_MODEL_PATH`` via joblib.
+Generates a synthetic corpus of normal web-browsing flows plus anomalous flows,
+fits a StandardScaler + dense autoencoder over the fixed-dimension feature
+vector (see ``app/services/detection/ml.py::flow_features``), and persists the
+``{"model", "scaler"}`` pipeline to ``settings.ML_AE_MODEL_PATH`` via joblib.
 
 Run from the backend directory:
-    .venv\\Scripts\\python.exe scripts/train_ml_detector.py
+    .venv\\Scripts\\python.exe scripts/train_autoencoder.py
 """
 
 from __future__ import annotations
@@ -19,13 +18,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings
+from app.services.detection.autoencoder import (
+    reconstruction_error,
+    save_autoencoder,
+    train_flow_autoencoder,
+)
 from app.services.detection.ml import flow_features
-from joblib import dump
-from sklearn.ensemble import IsolationForest
 
 SEED = 42
 N_SAMPLES = 2_000
-NORMAL_SEED_PORTS = {80, 443, 8080, 53}
 NORMAL_PORTS = {80, 443, 8080, 53, 22, 123}
 ANOMALOUS_PORTS = {3389, 445, 139, 23, 21, 2323, 6667, 4444}
 
@@ -55,27 +56,15 @@ def _anomalous_flow(i: int) -> dict:
 def main() -> None:
     flows = [_normal_flow(i) for i in range(N_SAMPLES)]
     flows += [_anomalous_flow(i) for i in range(N_SAMPLES)]
-    features = [flow_features(flow) for flow in flows]
 
-    model = IsolationForest(
-        n_estimators=200,
-        max_samples="auto",
-        contamination=0.1,
-        random_state=SEED,
-    )
-    model.fit(features)
+    pipeline = train_flow_autoencoder(flows)
+    path = save_autoencoder(pipeline, Path(settings.ML_AE_MODEL_PATH))
 
-    path = Path(settings.ML_MODEL_PATH)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    dump(model, path)
-
-    print(f"trained IsolationForest on {len(features)} flows")
-    print(f"saved model to {path}")
-
-    expected_anomalies = sum(
-        1 for i in range(N_SAMPLES) if int(model.predict([features[i]])[0]) == -1
-    )
-    print(f"contamination rate on training set: {expected_anomalies / len(features):.3f}")
+    sample = [flow_features(flow) for flow in flows[:200]]
+    errors = reconstruction_error(pipeline, sample)
+    print(f"trained autoencoder on {len(flows)} flows")
+    print(f"saved pipeline to {path}")
+    print(f"mean reconstruction error on training sample: {sum(errors) / len(errors):.3f}")
 
 
 if __name__ == "__main__":

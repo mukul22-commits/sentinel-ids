@@ -8,13 +8,19 @@ INCIDENT_ALERTING_SEVERITIES = ("high", "critical")
 
 RESPONSE_ACTION_TYPES = ("block", "quarantine", "notify")
 RESPONSE_ACTION_TARGET_TYPES = ("ip", "port", "host", "email")
-RESPONSE_ACTION_STATUSES = ("pending", "executing", "succeeded", "failed")
+RESPONSE_ACTION_STATUSES = ("pending", "pending_approval", "executing", "succeeded", "failed")
+RESPONSE_ACTION_EXECUTABLE_STATUSES = ("pending", "pending_approval", "failed")
 
 # --- Detection engine (Phase 5) ---
 RULE_SEVERITIES = ("low", "medium", "high", "critical")
 ALERT_STATUSES = ("new", "acknowledged", "resolved", "false_positive")
 DETECTOR_SIGNATURE = "signature"
 DETECTOR_ML = "ml"
+
+# --- Advanced detection (Phase 9) ---
+DETECTOR_YARA = "yara"
+DETECTOR_AUTOENCODER = "autoencoder"
+DETECTOR_UEBA = "ueba"
 
 # --- Live capture adapters (Phase 6) ---
 CAPTURE_ADAPTER_SNIFF = "scapy_sniff"

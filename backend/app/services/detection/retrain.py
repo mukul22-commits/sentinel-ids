@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services.detection.autoencoder import save_autoencoder, train_flow_autoencoder
 from app.services.detection.ml import flow_features
 
 logger = logging.getLogger("sentinel.detection.retrain")
@@ -176,4 +177,58 @@ async def retrain_ml_model(
         "metadata": model_metadata(),
     }
     logger.info("retrained ML model on %d flows -> %s", len(flows), path)
+    return result
+
+
+def autoencoder_metadata() -> dict[str, Any]:
+    """Describe the current autoencoder artifact and configuration."""
+    path = Path(settings.ML_AE_MODEL_PATH)
+    info: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.is_file(),
+        "enabled": settings.AUTOENCODER_DETECTOR_ENABLED,
+        "threshold": settings.AUTOENCODER_THRESHOLD,
+    }
+    if path.is_file():
+        stat = path.stat()
+        info["size_bytes"] = stat.st_size
+        info["modified_at"] = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+    return info
+
+
+async def retrain_autoencoder_model(
+    db: AsyncSession,
+    *,
+    min_samples: int | None = None,
+) -> dict[str, Any]:
+    """Fit the flow autoencoder from recent packet flows.
+
+    Uses the same minimum-samples guard as the isolation-forest retraining so a
+    small corpus can never overwrite a working model with an undertrained one.
+    """
+    threshold = min_samples if min_samples is not None else settings.ML_RETRAIN_MIN_SAMPLES
+    limit = max(threshold * 10, 1_000)
+    flows = await _fetch_recent_flows(db, limit)
+    if len(flows) < threshold:
+        return {
+            "status": "skipped",
+            "reason": f"only {len(flows)} recent flows; need at least {threshold}",
+            "metadata": autoencoder_metadata(),
+        }
+
+    model = train_flow_autoencoder(flows)
+    path = save_autoencoder(model, Path(settings.ML_AE_MODEL_PATH))
+    from app.services.detection.autoencoder import reconstruction_error
+
+    errors = reconstruction_error(model, [flow_features(flow) for flow in flows])
+    anomaly_rate = sum(1 for error in errors if error > settings.AUTOENCODER_THRESHOLD) / len(flows)
+    result = {
+        "status": "trained",
+        "samples": len(flows),
+        "path": str(path),
+        "anomaly_rate": round(float(anomaly_rate), 4),
+        "mean_reconstruction_error": round(float(sum(errors) / len(errors)), 6),
+        "metadata": autoencoder_metadata(),
+    }
+    logger.info("retrained autoencoder on %d flows -> %s", len(flows), path)
     return result

@@ -16,9 +16,11 @@ from app.models.user import User
 from app.schemas.alert import AlertCreate
 from app.services.alert_service import create_many
 from app.services.automation_service import trigger_automation
+from app.services.detection.autoencoder import AutoencoderDetector
 from app.services.detection.base import Detector
 from app.services.detection.ml import MLDetector
 from app.services.detection.signature import SignatureDetector
+from app.services.detection.yara import YaraDetector
 from app.services.notification_service import create_notification
 
 logger = logging.getLogger("sentinel.detection.engine")
@@ -48,7 +50,11 @@ class DetectionEngine:
     """Runs the configured detectors over a batch of records."""
 
     def __init__(self, detectors: list[Detector] | None = None) -> None:
-        self.detectors = detectors if detectors is not None else [SignatureDetector(), MLDetector()]
+        self.detectors = (
+            detectors
+            if detectors is not None
+            else [SignatureDetector(), YaraDetector(), MLDetector(), AutoencoderDetector()]
+        )
 
     async def run(
         self,

@@ -112,6 +112,47 @@ class Settings(BaseSettings):
     SENSOR_WATCHDOG_SECONDS: int = 30
     SENSOR_STALE_AFTER_SECONDS: int = 90
 
+    # --- Advanced detection: YARA + neural autoencoder (Phase 9) ---
+    YARA_DETECTOR_ENABLED: bool = True
+    YARA_RULES_DIR: str = "app/yara_rules"
+    YARA_MAX_PAYLOAD_BYTES: int = 1_048_576
+    AUTOENCODER_DETECTOR_ENABLED: bool = False
+    ML_AE_MODEL_PATH: str = "app/ml_models/flow_autoencoder.joblib"
+    AUTOENCODER_THRESHOLD: float = 1.0
+
+    # --- UEBA / behavioral analytics (Phase 9) ---
+    UEBA_ENABLED: bool = True
+    UEBA_PROFILES_PATH: str = "app/ueba_profiles/baselines.joblib"
+    UEBA_WINDOW_HOURS: int = 24
+    UEBA_MIN_SAMPLES: int = 20
+    UEBA_THRESHOLD: float = 3.0
+
+    # --- OIDC single sign-on (Phase 9) ---
+    OIDC_ENABLED: bool = False
+    OIDC_ISSUER: str | None = None
+    OIDC_CLIENT_ID: str | None = None
+    OIDC_CLIENT_SECRET: str | None = None
+    OIDC_SCOPES: str = "openid email profile"
+    OIDC_DOMAIN: str | None = None
+    OIDC_REDIRECT_PATH: str = "/api/v1/auth/oidc/callback"
+    OIDC_HTTP_TIMEOUT_SECONDS: float = 5.0
+
+    # --- Secret management (Phase 9) ---
+    SECRET_KEY_FILE: str | None = None
+    VAULT_URL: str | None = None
+    VAULT_TOKEN: str | None = None
+    VAULT_MOUNT: str = "secret"
+    VAULT_PATH: str | None = None
+
+    # --- SOAR connectors: firewall / EDR (Phase 9) ---
+    OPNSENSE_CONNECTOR_URL: str | None = None
+    OPNSENSE_CONNECTOR_KEY: str | None = None
+    OPNSENSE_CONNECTOR_SECRET: str | None = None
+    OPNSENSE_CONNECTOR_TIMEOUT_SECONDS: float = 5.0
+    EDR_CONNECTOR_URL: str | None = None
+    EDR_CONNECTOR_TOKEN: str | None = None
+    EDR_CONNECTOR_TIMEOUT_SECONDS: float = 5.0
+
     @property
     def rate_limit_storage_uri(self) -> str:
         """Rate-limit storage: in-memory for tests, Redis for dev/prod."""

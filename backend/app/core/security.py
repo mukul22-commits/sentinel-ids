@@ -10,6 +10,7 @@ import bcrypt
 import jwt
 
 from app.core.config import settings
+from app.services.secrets import secret_key
 
 ALGORITHM = settings.JWT_ALGORITHM
 ISSUER = settings.JWT_ISSUER
@@ -103,7 +104,7 @@ def create_access_token(user_id: int, role: str) -> str:
         "iss": ISSUER,
         "typ": "access",
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, secret_key(), algorithm=ALGORITHM)
 
 
 def create_refresh_token(user_id: int, role: str, family_id: str) -> str:
@@ -120,14 +121,14 @@ def create_refresh_token(user_id: int, role: str, family_id: str) -> str:
         "typ": "refresh",
         "fid": family_id,
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, secret_key(), algorithm=ALGORITHM)
 
 
 def _decode_raw(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(
             token,
-            settings.SECRET_KEY,
+            secret_key(),
             algorithms=[ALGORITHM],
             audience=AUDIENCE,
             issuer=ISSUER,

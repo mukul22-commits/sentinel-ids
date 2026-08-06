@@ -10,7 +10,12 @@ from app.core.limiter import limiter
 from app.core.rbac import PERMISSION_MANAGE_SYSTEM, PERMISSION_READ
 from app.models.user import User
 from app.schemas.common import Envelope
-from app.services.detection.retrain import model_metadata, retrain_ml_model
+from app.services.detection.retrain import (
+    autoencoder_metadata,
+    model_metadata,
+    retrain_autoencoder_model,
+    retrain_ml_model,
+)
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 router = APIRouter(prefix="/system/ml", tags=["ml"])
@@ -39,6 +44,31 @@ async def retrain(
     request_id = get_request_id(request)
     try:
         result = await retrain_ml_model(db)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Retraining unavailable: {exc}") from exc
+    return Envelope(success=True, data=result, request_id=request_id)
+
+
+@router.get("/autoencoder", response_model=Envelope[dict[str, Any]])
+@limiter.limit(settings.RATE_LIMIT_API)
+async def get_autoencoder_status(
+    request: Request,
+    _actor: MlReader,
+) -> Envelope[dict[str, Any]]:
+    request_id = get_request_id(request)
+    return Envelope(success=True, data=autoencoder_metadata(), request_id=request_id)
+
+
+@router.post("/autoencoder/retrain", response_model=Envelope[dict[str, Any]])
+@limiter.limit(settings.RATE_LIMIT_API)
+async def retrain_autoencoder(
+    request: Request,
+    _actor: MlOperator,
+    db: DbSession,
+) -> Envelope[dict[str, Any]]:
+    request_id = get_request_id(request)
+    try:
+        result = await retrain_autoencoder_model(db)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Retraining unavailable: {exc}") from exc
     return Envelope(success=True, data=result, request_id=request_id)

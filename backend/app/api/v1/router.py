@@ -11,6 +11,7 @@ from app.api.v1.endpoints.packets import router as packets_router
 from app.api.v1.endpoints.system import router as system_router
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.connectors import router as connectors_router
+from app.api.v1.routes.detection import router as detection_router
 from app.api.v1.routes.incidents import router as incidents_router
 from app.api.v1.routes.iocs import router as iocs_router
 from app.api.v1.routes.ml import router as ml_router
@@ -32,6 +33,7 @@ api_router.include_router(rules_router)
 api_router.include_router(iocs_router)
 api_router.include_router(policies_router)
 api_router.include_router(ml_router)
+api_router.include_router(detection_router)
 api_router.include_router(connectors_router)
 api_router.include_router(siem_router)
 api_router.include_router(sensors_router)
