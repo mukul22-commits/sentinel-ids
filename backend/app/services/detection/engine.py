@@ -20,6 +20,7 @@ from app.services.detection.autoencoder import AutoencoderDetector
 from app.services.detection.base import Detector
 from app.services.detection.ml import MLDetector
 from app.services.detection.signature import SignatureDetector
+from app.services.detection.ueba import UebaDetector
 from app.services.detection.yara import YaraDetector
 from app.services.notification_service import create_notification
 
@@ -53,7 +54,13 @@ class DetectionEngine:
         self.detectors = (
             detectors
             if detectors is not None
-            else [SignatureDetector(), YaraDetector(), MLDetector(), AutoencoderDetector()]
+            else [
+                SignatureDetector(),
+                YaraDetector(),
+                MLDetector(),
+                AutoencoderDetector(),
+                UebaDetector(),
+            ]
         )
 
     async def run(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from app.api.v1.deps import get_request_id, require_permission
+from app.api.v1.deps import DbSession, get_request_id, require_permission
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.rbac import PERMISSION_MANAGE_SYSTEM, PERMISSION_READ
@@ -12,7 +12,8 @@ from app.models.user import User
 from app.schemas.common import Envelope
 from app.services.detection import YaraDetector
 from app.services.detection.yara import _payload_bytes
-from fastapi import APIRouter, Depends, Request
+from app.services.ueba import profiles_metadata, retrain_ueba_profiles
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 router = APIRouter(prefix="/system/detection", tags=["detection"])
 
@@ -72,3 +73,25 @@ async def inspect_payload_extraction(
         data={"extracted": data is not None, "bytes": len(data) if data else 0},
         request_id=request_id,
     )
+
+
+@router.get("/ueba", response_model=Envelope[dict[str, Any]])
+@limiter.limit(settings.RATE_LIMIT_API)
+async def ueba_status(request: Request, _actor: DetectionReader) -> Envelope[dict[str, Any]]:
+    request_id = get_request_id(request)
+    return Envelope(success=True, data=profiles_metadata(), request_id=request_id)
+
+
+@router.post("/ueba/retrain", response_model=Envelope[dict[str, Any]])
+@limiter.limit(settings.RATE_LIMIT_API)
+async def ueba_retrain(
+    request: Request,
+    _actor: DetectionOperator,
+    db: DbSession,
+) -> Envelope[dict[str, Any]]:
+    request_id = get_request_id(request)
+    try:
+        result = await retrain_ueba_profiles(db)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"UEBA retraining unavailable: {exc}") from exc
+    return Envelope(success=True, data=result, request_id=request_id)
