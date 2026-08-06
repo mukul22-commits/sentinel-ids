@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from app.core.rbac import (
     PERMISSION_MANAGE_INCIDENTS,
+    PERMISSION_MANAGE_POLICIES,
     PERMISSION_MANAGE_RULES,
     PERMISSION_READ,
     PERMISSION_RESPOND,
     PERMISSION_VIEW_INCIDENTS,
     PERMISSION_VIEW_NOTIFICATIONS,
+    PERMISSION_VIEW_POLICIES,
     ROLE_ADMIN,
     ROLE_ANALYST,
     ROLE_VIEWER,
@@ -23,6 +25,8 @@ class TestPermissionMatrix:
         assert has_permission(ROLE_ADMIN, PERMISSION_RESPOND)
         assert has_permission(ROLE_ADMIN, PERMISSION_MANAGE_RULES)
         assert has_permission(ROLE_ADMIN, PERMISSION_MANAGE_INCIDENTS)
+        assert has_permission(ROLE_ADMIN, PERMISSION_MANAGE_POLICIES)
+        assert has_permission(ROLE_ADMIN, PERMISSION_VIEW_POLICIES)
         assert has_permission(ROLE_ADMIN, PERMISSION_VIEW_NOTIFICATIONS)
 
     def test_analyst_can_respond_but_not_manage_users(self) -> None:
@@ -32,13 +36,17 @@ class TestPermissionMatrix:
         assert has_permission(ROLE_ANALYST, PERMISSION_MANAGE_INCIDENTS)
         assert has_permission(ROLE_ANALYST, PERMISSION_VIEW_NOTIFICATIONS)
         assert not has_permission(ROLE_ANALYST, PERMISSION_MANAGE_RULES)
+        assert has_permission(ROLE_ANALYST, PERMISSION_VIEW_POLICIES)
+        assert not has_permission(ROLE_ANALYST, PERMISSION_MANAGE_POLICIES)
 
     def test_viewer_is_read_only(self) -> None:
         assert has_permission(ROLE_VIEWER, PERMISSION_READ)
         assert has_permission(ROLE_VIEWER, PERMISSION_VIEW_INCIDENTS)
         assert has_permission(ROLE_VIEWER, PERMISSION_VIEW_NOTIFICATIONS)
+        assert has_permission(ROLE_VIEWER, PERMISSION_VIEW_POLICIES)
         assert not has_permission(ROLE_VIEWER, PERMISSION_RESPOND)
         assert not has_permission(ROLE_VIEWER, PERMISSION_MANAGE_INCIDENTS)
+        assert not has_permission(ROLE_VIEWER, PERMISSION_MANAGE_POLICIES)
 
     def test_unknown_role(self) -> None:
         assert not has_permission("root", PERMISSION_READ)

@@ -15,6 +15,7 @@ from app.models.alert import Alert
 from app.models.user import User
 from app.schemas.alert import AlertCreate
 from app.services.alert_service import create_many
+from app.services.automation_service import trigger_automation
 from app.services.detection.base import Detector
 from app.services.detection.ml import MLDetector
 from app.services.detection.signature import SignatureDetector
@@ -66,6 +67,10 @@ class DetectionEngine:
         if alerts:
             logger.info("detection engine raised %d alert(s)", len(alerts))
             await self._notify_staff(db, alerts)
+            try:
+                await trigger_automation(db, alerts)
+            except Exception:
+                logger.exception("response automation failed")
         return alerts
 
     @staticmethod

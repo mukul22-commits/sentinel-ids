@@ -105,6 +105,14 @@ alembic upgrade head
 | POST   | `/api/v1/iocs`         | Create IOC                          |
 | POST   | `/api/v1/iocs/bulk`    | Upsert 1–500 IOCs at once          |
 | GET/PATCH/DELETE | `/api/v1/iocs/{id}` | Read / update / delete an IOC      |
+| GET    | `/api/v1/captures`     | List live-capture cycle runs (adapter, status, packet/alert counts) |
+| GET    | `/api/v1/captures/status` | Adapter status + last run per source (scapy_sniff/suricata_eve/zeek_conn) |
+| POST   | `/api/v1/captures/run` | Run one capture cycle on demand (admin) |
+| GET    | `/api/v1/policies`     | List response policies (admin/analyst) |
+| POST   | `/api/v1/policies`     | Create a response policy (admin)      |
+| GET/PATCH/DELETE | `/api/v1/policies/{id}` | Read / update / delete a policy   |
+| GET    | `/api/v1/system/ml`    | ML model artifact + retrain config status |
+| POST   | `/api/v1/system/ml/retrain` | Retrain the ML detector from packet history (admin) |
 
 All `/api/v1/*` responses use the envelope:
 `{"success": bool, "data": ..., "error": null, "request_id": "..."}`. Every response carries
@@ -223,6 +231,10 @@ composite `(id, ts)`.
 | `TIMESCALE_CHUNK_INTERVAL_DAYS` | backend env | hypertable chunk interval |
 | `CORS_ORIGINS`   | backend env  | JSON list of allowed browser origins |
 | `SECRET_KEY`     | backend env  | placeholder — Phase 3 (auth)     |
+| `CAPTURE_ENABLED` / `CAPTURE_CYCLE_SECONDS` | backend env | live capture master switch + beat interval |
+| `SNIFF_INTERFACE` / `SNIFF_COUNT` / `SNIFF_TIMEOUT` | backend env | Scapy live-sniff adapter (requires Npcap/libpcap; leave unset to disable) |
+| `SURICATA_EVE_PATH` / `ZEEK_CONN_LOG_PATH` | backend env | Suricata `eve.json` / Zeek `conn.log` paths (file or dir) for those adapters |
+| `ML_RETRAIN_MIN_SAMPLES` / `ML_RETRAIN_CONTAMINATION` | backend env | ML retraining threshold + anomaly contamination |
 
 ## Git workflow
 

@@ -70,6 +70,38 @@ def _tcp_flags(packet: Packet) -> str | None:
     return str(flags) if flags else None
 
 
+def packet_to_record(packet: Packet, source_name: str | None = None) -> PacketCreate | None:
+    """Normalize a Scapy packet into a ``PacketCreate`` record (IP only)."""
+    ip = packet.getlayer(IP)
+    if ip is None:
+        return None
+    src_ip = str(getattr(ip, "src", ""))
+    dst_ip = str(getattr(ip, "dst", ""))
+    src_port = dst_port = None
+    if TCP is not None and packet.haslayer(TCP):
+        tcp = packet.getlayer(TCP)
+        src_port = int(getattr(tcp, "sport", 0)) or None
+        dst_port = int(getattr(tcp, "dport", 0)) or None
+    elif UDP is not None and packet.haslayer(UDP):
+        udp = packet.getlayer(UDP)
+        src_port = int(getattr(udp, "sport", 0)) or None
+        dst_port = int(getattr(udp, "dport", 0)) or None
+
+    packet_time = float(getattr(packet, "time", 0) or 0)
+    return PacketCreate(
+        src_ip=src_ip,
+        src_port=src_port,
+        dst_ip=dst_ip,
+        dst_port=dst_port,
+        proto=_protocol(packet),
+        length=int(len(bytes(packet))),
+        flags=_tcp_flags(packet),
+        payload_hash=_payload_hash(packet),
+        raw_ref=source_name,
+        ts=datetime.fromtimestamp(packet_time, tz=UTC),
+    )
+
+
 def parse_pcap_bytes(data: bytes, source_name: str | None = None) -> list[PacketCreate]:
     """Parse a pcap byte stream into ``PacketCreate`` records."""
     if IP is None or rdpcap is None:
@@ -87,34 +119,7 @@ def parse_pcap_bytes(data: bytes, source_name: str | None = None) -> list[Packet
 
     records: list[PacketCreate] = []
     for packet in packets:
-        ip = packet.getlayer(IP)
-        if ip is None:
-            continue
-        src_ip = str(getattr(ip, "src", ""))
-        dst_ip = str(getattr(ip, "dst", ""))
-        src_port = dst_port = None
-        if TCP is not None and packet.haslayer(TCP):
-            tcp = packet.getlayer(TCP)
-            src_port = int(getattr(tcp, "sport", 0)) or None
-            dst_port = int(getattr(tcp, "dport", 0)) or None
-        elif UDP is not None and packet.haslayer(UDP):
-            udp = packet.getlayer(UDP)
-            src_port = int(getattr(udp, "sport", 0)) or None
-            dst_port = int(getattr(udp, "dport", 0)) or None
-
-        packet_time = float(getattr(packet, "time", 0) or 0)
-        records.append(
-            PacketCreate(
-                src_ip=src_ip,
-                src_port=src_port,
-                dst_ip=dst_ip,
-                dst_port=dst_port,
-                proto=_protocol(packet),
-                length=int(len(bytes(packet))),
-                flags=_tcp_flags(packet),
-                payload_hash=_payload_hash(packet),
-                raw_ref=source_name,
-                ts=datetime.fromtimestamp(packet_time, tz=UTC),
-            )
-        )
+        record = packet_to_record(packet, source_name=source_name)
+        if record is not None:
+            records.append(record)
     return records

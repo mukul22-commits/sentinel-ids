@@ -65,6 +65,19 @@ class Settings(BaseSettings):
     ML_DETECTOR_ENABLED: bool = False
     ML_MODEL_PATH: str = "app/ml_models/flow_anomaly.joblib"
 
+    # --- Live capture (Phase 6) ---
+    CAPTURE_ENABLED: bool = True
+    CAPTURE_CYCLE_SECONDS: int = 30
+    SNIFF_INTERFACE: str | None = None
+    SNIFF_COUNT: int = 100
+    SNIFF_TIMEOUT: int = 5
+    SURICATA_EVE_PATH: str | None = None
+    ZEEK_CONN_LOG_PATH: str | None = None
+
+    # --- ML retraining (Phase 6) ---
+    ML_RETRAIN_MIN_SAMPLES: int = 500
+    ML_RETRAIN_CONTAMINATION: float = 0.1
+
     @property
     def rate_limit_storage_uri(self) -> str:
         """Rate-limit storage: in-memory for tests, Redis for dev/prod."""

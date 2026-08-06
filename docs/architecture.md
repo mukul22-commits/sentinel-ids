@@ -117,13 +117,44 @@ backend/
 | 3     | Authn/authz (JWT), users + audit-log enforcement, real `SECRET_KEY` | **Done** |
 | 4     | Response orchestration, alerting, WebSocket realtime UI, dashboards (Recharts/ApexCharts) | **Done** |
 | 5     | Packet capture + detection engine (signature + ML), rules/IOC management, Prometheus/Grafana/Loki observability, Tailwind v4 | **Done** |
-| 6     | Live capture integration (Suricata/Zeek), response automation, model retraining pipeline | Planned |
+| 6     | Live capture integration (Scapy sniff, Suricata EVE, Zeek logs), response automation, ML retraining pipeline | **Done** |
+| 7     | Production hardening (HA, external SIEM export, connector plugins) | Planned |
+
+## Phase 6 live capture, automation, and model lifecycle
+
+- **Capture adapters** — `services/capture/` defines a `CaptureAdapter` interface
+  (`enabled()`/`collect()` → normalized `PacketCreate` records). `SniffCaptureAdapter`
+  runs a bounded Scapy `sniff` window on `SNIFF_INTERFACE` (Npcap/libpcap); `SuricataEveAdapter`
+  ingests the trailing lines of Suricata `eve.json` (file or directory of `*.json`);
+  `ZeekLogAdapter` parses Zeek `conn.log` (TSV header/rows). `CaptureManager.run_cycle`
+  feeds each adapter's batch through ingestion + the detection engine and records a
+  `capture_runs` row (`/api/v1/captures`, `/api/v1/captures/status`,
+  `POST /api/v1/captures/run`). The `capture.cycle` Celery beat task runs cycles on a timer.
+  Adapters self-disable when their source is unconfigured, so the stack runs with zero
+  extra setup and live capture lights up as env vars are set.
+- **Response automation** — `ResponsePolicy` (table `response_policies`) maps alert
+  conditions (severity, detector, category, min risk score) to a playbook of response
+  actions (`block`/`quarantine`/`notify`) with `{{src_ip}}`/`{{dst_ip}}` target templates
+  and a per-`(policy, target)` Redis cooldown. `automation_service.trigger_automation`
+  runs after every detection batch (wired into `DetectionEngine.run`), auto-creating an
+  incident, planning + executing the policy's actions, and notifying staff. Policies are
+  managed via `/api/v1/policies` (admin) and evaluated automatically thereafter.
+- **ML retraining pipeline** — `services/detection/retrain.py` pulls recent flows from the
+  `packets` hypertable, fits an IsolationForest, and atomically swaps
+  `ML_MODEL_PATH` (temp file + `os.replace`, so inference never reads a partial model).
+  It refuses to overwrite a working model when fewer than `ML_RETRAIN_MIN_SAMPLES` flows
+  exist. Exposed as `GET /api/v1/system/ml` (metadata) and `POST /api/v1/system/ml/retrain`
+  (admin), with a `ml.retrain` Celery beat task (daily).
+- **Deployment note** — the sniff adapter runs inside the worker; live interface capture in
+  Docker needs the `NET_ADMIN` capability + `SNIFF_INTERFACE`. Suricata/Zeek adapters only
+  require mounted log files.
 
 ## Deferred items (intentional)
 
-- Live packet capture adapters (Suricata/Zeek/PyShark) and response automation land in Phase 6;
-  Phase 5 covers pcap ingestion + detection end to end.
+- Connector plugins for real enforcement (firewall/EDR/email) and external SIEM export land
+  in Phase 7; response actions remain simulated with deterministic plans.
 - `SECRET_KEY` remains a placeholder; production requires an override.
 - Schema evolution is tracked in committed Alembic migrations: `0001` (initial),
   `0002` (response_actions, notifications), `0003` (Phase 3 auth columns),
-  `0004` (Phase 5 alert title/detector/details).
+  `0004` (Phase 5 alert title/detector/details), `0005` (Phase 6
+  `response_policies` + `capture_runs`).

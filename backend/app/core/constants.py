@@ -16,6 +16,12 @@ ALERT_STATUSES = ("new", "acknowledged", "resolved", "false_positive")
 DETECTOR_SIGNATURE = "signature"
 DETECTOR_ML = "ml"
 
+# --- Live capture adapters (Phase 6) ---
+CAPTURE_ADAPTER_SNIFF = "scapy_sniff"
+CAPTURE_ADAPTER_SURICATA = "suricata_eve"
+CAPTURE_ADAPTER_ZEEK = "zeek_conn"
+CAPTURE_RUN_STATUSES = ("succeeded", "failed")
+
 IOC_TYPES = (
     "ipv4",
     "ipv6",

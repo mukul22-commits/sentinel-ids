@@ -10,7 +10,7 @@ celery_app = Celery(
     "sentinel_ids",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.demo"],
+    include=["app.tasks.demo", "app.tasks.capture", "app.tasks.ml"],
 )
 
 celery_app.conf.update(
@@ -27,6 +27,14 @@ celery_app.conf.update(
             "health-check-every-30s": {
                 "task": "demo.health_check",
                 "schedule": 30.0,
+            },
+            "capture-cycle": {
+                "task": "capture.cycle",
+                "schedule": settings.CAPTURE_CYCLE_SECONDS,
+            },
+            "ml-retrain-daily": {
+                "task": "ml.retrain",
+                "schedule": 86_400.0,
             },
         }
         if settings.CELERY_BEAT_SCHEDULE_ENABLED

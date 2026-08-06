@@ -69,3 +69,19 @@ async def delete(key: str) -> bool:
         return False
     finally:
         await client.aclose()
+
+
+async def acquire(key: str, *, ttl: int) -> bool:
+    """Atomically set ``key`` only when absent (SET NX EX).
+
+    Used for automation cooldowns. Fails open (returns True) when Redis is
+    unreachable so response automation is never silently suppressed.
+    """
+    client = _client()
+    try:
+        return bool(await client.set(key, "1", nx=True, ex=ttl))
+    except RedisError as exc:
+        logger.warning("redis acquire failed for key %r: %s", key, exc)
+        return True
+    finally:
+        await client.aclose()

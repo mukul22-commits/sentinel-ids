@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from sqlalchemy import func, select
@@ -22,6 +22,7 @@ from app.schemas.packet import (
     PacketRead,
 )
 from app.services.detection import detection_engine
+from app.services.detection.records import to_detection_record
 from app.services.packet_capture import CaptureUnavailableError, parse_pcap_bytes
 from app.services.packet_service import ingest as ingest_packets
 
@@ -34,19 +35,6 @@ SinceParam = Annotated[datetime | None, Query()]
 UntilParam = Annotated[datetime | None, Query()]
 
 _VALID_PROTOCOLS = ("tcp", "udp", "icmp", "other")
-
-
-def _to_record(packet: PacketCreate) -> dict[str, Any]:
-    """Normalize a packet into a detection record."""
-    return {
-        "src_ip": packet.src_ip,
-        "src_port": packet.src_port,
-        "dst_ip": packet.dst_ip,
-        "dst_port": packet.dst_port,
-        "proto": packet.proto,
-        "length": packet.length,
-        "flags": packet.flags,
-    }
 
 
 @router.get("", response_model=Envelope[PacketList])
@@ -119,7 +107,7 @@ async def ingest_packets_endpoint(
             raise HTTPException(status_code=422, detail=f"Invalid protocol '{packet.proto}'")
 
     ingested = await ingest_packets(db, payload)
-    alerts = await detection_engine.run(db, [_to_record(p) for p in payload])
+    alerts = await detection_engine.run(db, [to_detection_record(p) for p in payload])
     return Envelope(
         success=True,
         data=PacketIngestSummary(ingested=ingested, alerts=len(alerts)),
@@ -149,7 +137,7 @@ async def import_pcap(
         raise HTTPException(status_code=422, detail="No IP packets found in pcap")
 
     ingested = await ingest_packets(db, packets)
-    alerts = await detection_engine.run(db, [_to_record(p) for p in packets])
+    alerts = await detection_engine.run(db, [to_detection_record(p) for p in packets])
     return Envelope(
         success=True,
         data=PacketIngestSummary(ingested=ingested, alerts=len(alerts)),
