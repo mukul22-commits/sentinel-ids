@@ -23,6 +23,8 @@ PERMISSION_VIEW_POLICIES = "view_policies"
 PERMISSION_VIEW_INCIDENTS = "view_incidents"
 PERMISSION_MANAGE_INCIDENTS = "manage_incidents"
 PERMISSION_VIEW_NOTIFICATIONS = "view_notifications"
+PERMISSION_VIEW_SENSORS = "view_sensors"
+PERMISSION_MANAGE_SENSORS = "manage_sensors"
 
 # admin = all; analyst = read + respond + incident handling; viewer = read-only.
 PERMISSION_MATRIX: dict[str, frozenset[str]] = {
@@ -44,6 +46,8 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
             PERMISSION_VIEW_INCIDENTS,
             PERMISSION_MANAGE_INCIDENTS,
             PERMISSION_VIEW_NOTIFICATIONS,
+            PERMISSION_VIEW_SENSORS,
+            PERMISSION_MANAGE_SENSORS,
         }
     ),
     ROLE_ANALYST: frozenset(
@@ -59,6 +63,7 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
             PERMISSION_VIEW_INCIDENTS,
             PERMISSION_MANAGE_INCIDENTS,
             PERMISSION_VIEW_NOTIFICATIONS,
+            PERMISSION_VIEW_SENSORS,
         }
     ),
     ROLE_VIEWER: frozenset(
@@ -70,6 +75,7 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
             PERMISSION_VIEW_POLICIES,
             PERMISSION_VIEW_INCIDENTS,
             PERMISSION_VIEW_NOTIFICATIONS,
+            PERMISSION_VIEW_SENSORS,
         }
     ),
 }

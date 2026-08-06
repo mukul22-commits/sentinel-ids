@@ -4,6 +4,7 @@ import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { Spinner } from "./components/Spinner";
 import Dashboard from "./pages/Dashboard";
+import Fleet from "./pages/Fleet";
 import IncidentDetail from "./pages/IncidentDetail";
 import Incidents from "./pages/Incidents";
 import Login from "./pages/Login";
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/incidents" element={<Incidents />} />
         <Route path="/incidents/:id" element={<IncidentDetail />} />
+        <Route path="/fleet" element={<Fleet />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

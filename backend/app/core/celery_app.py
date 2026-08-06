@@ -10,7 +10,13 @@ celery_app = Celery(
     "sentinel_ids",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.demo", "app.tasks.capture", "app.tasks.ml", "app.tasks.siem"],
+    include=[
+        "app.tasks.demo",
+        "app.tasks.capture",
+        "app.tasks.ml",
+        "app.tasks.siem",
+        "app.tasks.sensors",
+    ],
 )
 
 celery_app.conf.update(
@@ -42,6 +48,10 @@ celery_app.conf.update(
             "siem-export-cycle": {
                 "task": "siem.export_alerts",
                 "schedule": settings.SIEM_EXPORT_SECONDS,
+            },
+            "sensors-watchdog": {
+                "task": "sensors.watchdog",
+                "schedule": settings.SENSOR_WATCHDOG_SECONDS,
             },
         }
         if settings.CELERY_BEAT_SCHEDULE_ENABLED

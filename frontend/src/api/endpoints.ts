@@ -3,12 +3,15 @@ import type {
   ActionStatus,
   ActionType,
   ActionTargetType,
+  FleetSummary,
   Incident,
   IncidentSeverity,
   IncidentStatus,
   Notification,
   Paginated,
   ResponseAction,
+  Sensor,
+  SensorStatus,
   TokenPair,
   User,
 } from "./types";
@@ -139,6 +142,56 @@ export async function markNotificationRead(id: number): Promise<Notification> {
 
 export async function markAllNotificationsRead(): Promise<number> {
   return api.postEmpty<number>(`${BASE}/notifications/read-all`);
+}
+
+export async function listSensors(
+  query: { status?: SensorStatus; page?: number; page_size?: number } = {},
+): Promise<Paginated<Sensor>> {
+  const params = new URLSearchParams();
+  if (query.status) params.set("status", query.status);
+  if (query.page) params.set("page", String(query.page));
+  if (query.page_size) params.set("page_size", String(query.page_size));
+  const qs = params.toString();
+  return api.get<Paginated<Sensor>>(`${BASE}/sensors${qs ? `?${qs}` : ""}`);
+}
+
+export async function getFleetSummary(): Promise<FleetSummary> {
+  return api.get<FleetSummary>(`${BASE}/sensors/fleet`);
+}
+
+export interface SensorRegistration {
+  sensor: Sensor;
+  token: string;
+}
+
+export async function registerSensor(input: {
+  name: string;
+  hostname?: string;
+  ip_address?: string;
+  version?: string;
+}): Promise<SensorRegistration> {
+  return api.post<SensorRegistration>(`${BASE}/sensors`, input);
+}
+
+export async function updateSensor(
+  id: number,
+  input: {
+    name?: string;
+    hostname?: string;
+    ip_address?: string;
+    version?: string;
+    enabled?: boolean;
+  },
+): Promise<Sensor> {
+  return api.patch<Sensor>(`${BASE}/sensors/${id}`, input);
+}
+
+export async function rotateSensorToken(id: number): Promise<{ token: string }> {
+  return api.postEmpty<{ token: string }>(`${BASE}/sensors/${id}/rotate-token`);
+}
+
+export async function deleteSensor(id: number): Promise<{ deleted: boolean }> {
+  return api.del<{ deleted: boolean }>(`${BASE}/sensors/${id}`);
 }
 
 export const ACTION_STATUSES: ActionStatus[] = ["pending", "executing", "succeeded", "failed"];

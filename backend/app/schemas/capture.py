@@ -12,6 +12,7 @@ class CaptureRunRead(BaseModel):
 
     id: int
     adapter: str
+    sensor_id: int | None = None
     started_at: datetime
     finished_at: datetime | None
     packets_ingested: int

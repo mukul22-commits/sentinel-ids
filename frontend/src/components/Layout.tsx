@@ -6,6 +6,7 @@ import { NotificationBell } from "./NotificationBell";
 const NAV_LINKS = [
   { to: "/", label: "Dashboard" },
   { to: "/incidents", label: "Incidents" },
+  { to: "/fleet", label: "Fleet" },
 ];
 
 function navClass(isActive: boolean): string {

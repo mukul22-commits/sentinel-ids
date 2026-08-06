@@ -21,6 +21,7 @@ class AlertBase(BaseModel):
     risk_score: float
     status: str = "new"
     details: dict[str, Any] | None = None
+    sensor_id: int | None = None
 
 
 class AlertCreate(AlertBase):

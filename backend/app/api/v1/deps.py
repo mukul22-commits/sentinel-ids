@@ -13,10 +13,14 @@ from app.core.rbac import has_permission
 from app.core.security import AuthError, decode_access_token
 from app.core.token_store import token_store
 from app.db.session import get_db
+from app.models.sensor import Sensor
 from app.models.user import User
+from app.services.sensors.service import find_sensor_by_token
 
 UNAUTHORIZED = HTTPException(status_code=401, detail="Not authenticated")
 FORBIDDEN = HTTPException(status_code=403, detail="Insufficient permissions")
+SENSOR_UNAUTHORIZED = HTTPException(status_code=401, detail="Invalid or missing sensor token")
+SENSOR_DISABLED = HTTPException(status_code=403, detail="Sensor is disabled")
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
@@ -97,6 +101,29 @@ def require_roles(*roles: str) -> Callable[..., object]:
         return user
 
     return _role_guard
+
+
+async def get_current_sensor(request: Request, db: DbSession) -> Sensor:
+    """Authenticate a registered sensor via its ``X-Sensor-Token`` header.
+
+    Sensors are machines, not users: they present an opaque token whose hash is
+    stored in ``sensors.token_hash`` instead of a JWT. Disabled sensors are
+    rejected (403) so decommissioned nodes stop pulling config and posting
+    heartbeats.
+    """
+    token = request.headers.get("x-sensor-token", "")
+    if not token:
+        raise SENSOR_UNAUTHORIZED
+    sensor = await find_sensor_by_token(db, token)
+    if sensor is None:
+        raise SENSOR_UNAUTHORIZED
+    if not sensor.enabled:
+        raise SENSOR_DISABLED
+    request.state.current_sensor = sensor
+    return sensor
+
+
+CurrentSensor = Annotated[Sensor, Depends(get_current_sensor)]
 
 
 def require_permission(permission: str) -> Callable[..., object]:

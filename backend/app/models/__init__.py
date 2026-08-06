@@ -10,6 +10,7 @@ from app.models.packet import Packet
 from app.models.response_action import ResponseAction
 from app.models.response_policy import ResponsePolicy
 from app.models.rule import Rule
+from app.models.sensor import Sensor
 from app.models.siem_export_run import SiemExportRun
 from app.models.user import User
 
@@ -24,6 +25,7 @@ __all__ = [
     "ResponseAction",
     "ResponsePolicy",
     "Rule",
+    "Sensor",
     "SiemExportRun",
     "User",
 ]

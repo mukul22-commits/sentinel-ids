@@ -17,6 +17,7 @@ from app.api.v1.routes.ml import router as ml_router
 from app.api.v1.routes.notifications import router as notifications_router
 from app.api.v1.routes.policies import router as policies_router
 from app.api.v1.routes.rules import router as rules_router
+from app.api.v1.routes.sensors import router as sensors_router
 from app.api.v1.routes.siem import router as siem_router
 from app.api.v1.routes.users import router as users_router
 from app.schemas.common import Envelope
@@ -33,6 +34,7 @@ api_router.include_router(policies_router)
 api_router.include_router(ml_router)
 api_router.include_router(connectors_router)
 api_router.include_router(siem_router)
+api_router.include_router(sensors_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(incidents_router)

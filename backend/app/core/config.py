@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     ML_RETRAIN_MIN_SAMPLES: int = 500
     ML_RETRAIN_CONTAMINATION: float = 0.1
 
+    # --- Fleet / multi-sensor management (Phase 8) ---
+    SENSOR_TOKEN_BYTES: int = 32
+    SENSOR_WATCHDOG_SECONDS: int = 30
+    SENSOR_STALE_AFTER_SECONDS: int = 90
+
     @property
     def rate_limit_storage_uri(self) -> str:
         """Rate-limit storage: in-memory for tests, Redis for dev/prod."""

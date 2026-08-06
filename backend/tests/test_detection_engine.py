@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from app.core.constants import DETECTOR_ML, DETECTOR_SIGNATURE
 from app.schemas.alert import AlertCreate
 from app.services.detection.engine import _dedupe
@@ -98,8 +100,6 @@ class TestMLDetector:
             "length": 3,
         }
 
-        import asyncio
-
         alerts = asyncio.run(
             detector.detect(
                 None,  # type: ignore[arg-type]
@@ -111,3 +111,51 @@ class TestMLDetector:
         assert alert.detector == DETECTOR_ML
         assert alert.src_ip == "10.0.0.1"
         assert alert.risk_score >= 0.0
+
+
+class TestSensorAttribution:
+    def test_run_stamps_sensor_id_on_alerts(self, monkeypatch) -> None:
+        from datetime import UTC, datetime
+
+        from app.models.alert import Alert
+        from app.services.detection import engine as engine_module
+
+        class StubDetector:
+            name = "stub"
+
+            def enabled(self) -> bool:
+                return True
+
+            async def detect(self, db, records):  # type: ignore[no-untyped-def]
+                return [_alert()]
+
+        async def fake_create_many(db, alerts):  # type: ignore[no-untyped-def]
+            return [
+                Alert(
+                    id=index,
+                    created_at=datetime.now(UTC),
+                    **alert.model_dump(),
+                )
+                for index, alert in enumerate(alerts, start=1)
+            ]
+
+        async def noop(*args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            return None
+
+        class StubDB:
+            async def commit(self) -> None:
+                return None
+
+            async def refresh(self, obj: object) -> None:
+                return None
+
+        monkeypatch.setattr(engine_module, "create_many", fake_create_many)
+        monkeypatch.setattr(engine_module.DetectionEngine, "_notify_staff", staticmethod(noop))
+        monkeypatch.setattr(engine_module, "trigger_automation", noop)
+
+        engine = engine_module.DetectionEngine(detectors=[StubDetector()])
+        alerts = asyncio.run(
+            engine.run(StubDB(), [{"src_ip": "1.1.1.1"}], sensor_id=7)  # type: ignore[arg-type]
+        )
+        assert alerts
+        assert all(alert.sensor_id == 7 for alert in alerts)

@@ -84,3 +84,29 @@ export interface RealtimeEvent {
   type: string;
   payload: unknown;
 }
+
+export type SensorStatus = "online" | "offline" | "disabled";
+
+export interface Sensor {
+  id: number;
+  name: string;
+  hostname: string | null;
+  ip_address: string | null;
+  version: string | null;
+  status: SensorStatus;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FleetSummary {
+  total: number;
+  online: number;
+  offline: number;
+  disabled: number;
+  alerts_last_24h: number;
+  alerts_by_sensor: Record<string, number>;
+  captures_by_sensor: Record<string, number>;
+}

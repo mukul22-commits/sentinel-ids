@@ -50,8 +50,17 @@ class DetectionEngine:
     def __init__(self, detectors: list[Detector] | None = None) -> None:
         self.detectors = detectors if detectors is not None else [SignatureDetector(), MLDetector()]
 
-    async def run(self, db: AsyncSession, records: list[dict[str, Any]]) -> list[Alert]:
-        """Detect, persist, and broadcast alerts for the given records."""
+    async def run(
+        self,
+        db: AsyncSession,
+        records: list[dict[str, Any]],
+        *,
+        sensor_id: int | None = None,
+    ) -> list[Alert]:
+        """Detect, persist, and broadcast alerts for the given records.
+
+        ``sensor_id`` attributes the raised alerts to a fleet sensor.
+        """
         if not records:
             return []
         collected: list[AlertCreate] = []
@@ -64,6 +73,10 @@ class DetectionEngine:
                 logger.exception("detector %s failed", detector.name)
 
         alerts = await create_many(db, _dedupe(collected))
+        if alerts and sensor_id is not None:
+            for alert in alerts:
+                alert.sensor_id = sensor_id
+            await db.commit()
         if alerts:
             logger.info("detection engine raised %d alert(s)", len(alerts))
             await self._notify_staff(db, alerts)

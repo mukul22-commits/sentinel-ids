@@ -6,6 +6,7 @@ ingestion + detection pipeline as uploaded pcap files.
 """
 
 from app.services.capture.base import CaptureAdapter
+from app.services.capture.factory import build_adapters
 from app.services.capture.manager import CaptureManager, capture_manager
 from app.services.capture.sniff import SniffCaptureAdapter
 from app.services.capture.suricata_eve import SuricataEveAdapter
@@ -17,5 +18,6 @@ __all__ = [
     "SniffCaptureAdapter",
     "SuricataEveAdapter",
     "ZeekLogAdapter",
+    "build_adapters",
     "capture_manager",
 ]

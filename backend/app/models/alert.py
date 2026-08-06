@@ -21,6 +21,7 @@ class Alert(Base):
         Index("ix_alerts_detector", "detector"),
         Index("ix_alerts_status", "status"),
         Index("ix_alerts_created_at", "created_at"),
+        Index("ix_alerts_sensor_id", "sensor_id"),
         Index(
             "ix_alerts_siem_pending",
             "id",
@@ -42,4 +43,5 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(Text, server_default=text("'new'"))
     details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     siem_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sensor_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -119,6 +119,7 @@ backend/
 | 5     | Packet capture + detection engine (signature + ML), rules/IOC management, Prometheus/Grafana/Loki observability, Tailwind v4 | **Done** |
 | 6     | Live capture integration (Scapy sniff, Suricata EVE, Zeek logs), response automation, ML retraining pipeline | **Done** |
 | 7     | Production hardening (HA, external SIEM export, connector plugins) | **Done** |
+| 8     | Multi-sensor fleet management (token auth, heartbeats, distributed capture, watchdog, fleet UI) | **Done** |
 
 ## Phase 6 live capture, automation, and model lifecycle
 
@@ -189,4 +190,44 @@ backend/
   `0002` (response_actions, notifications), `0003` (Phase 3 auth columns),
   `0004` (Phase 5 alert title/detector/details), `0005` (Phase 6
   `response_policies` + `capture_runs`), `0006` (Phase 7 `alerts.siem_exported_at`
-  watermark + `siem_exports`).
+  watermark + `siem_exports`), `0007` (Phase 8 `sensors` + `alerts.sensor_id` +
+  `capture_runs.sensor_id`).
+
+## Phase 8 multi-sensor fleet management
+
+- **Sensors** — a `sensors` table registers capture nodes. Each sensor gets an
+  opaque URL-safe token (`secrets.token_urlsafe`, `SENSOR_TOKEN_BYTES` entropy);
+  only its SHA-256 hash is stored (`token_hash`), so the database never holds a
+  usable credential. Names are unique (case-insensitive), and each node keeps
+  reported identity (hostname, IP, version), `status`
+  (`online`/`offline`/`disabled`), `enabled`, a JSONB `config` override blob, and
+  `last_seen_at`.
+- **Agent auth + heartbeat** — sensor-agent routes (`POST /api/v1/sensors/heartbeat`,
+  `GET /api/v1/sensors/config`) authenticate with `X-Sensor-Token`
+  (`get_current_sensor` resolves the hash constant-time via `token_hash ==
+  sha256(token)`). Heartbeats flip the node `online` and refresh its identity +
+  `last_seen_at`; the `sensors.watchdog` Celery beat task flips enabled nodes that
+  missed their heartbeat window (`SENSOR_STALE_AFTER_SECONDS`, default 90s) back
+  to `offline`. Nodes that never heartbeated are left alone until their first
+  missed window.
+- **Distributed capture** — the capture cycle (`capture.cycle` beat task) now
+  iterates online, enabled sensors and runs per-sensor adapters via a
+  per-sensor capture manager/factory, feeding each node's batches through the
+  detection engine with `sensor_id` attribution (`DetectionEngine.run(..., sensor_id)`
+  stamps every raised alert). `capture_runs` rows carry `sensor_id` too, so run
+  history and alert volume are attributable per node.
+- **Effective config** — each sensor pulls `GET /api/v1/sensors/config`, which
+  shallow-merges its stored `config` overrides onto the capture defaults
+  (master switch, cycle seconds, and adapter blocks for
+  `scapy_sniff`/`suricata_eve`/`zeek_conn`); a stored adapter block replaces that
+  adapter's defaults wholesale.
+- **Fleet management API** — management routes are RBAC-gated (`view_sensors`,
+  `manage_sensors` added for every role): list/filter/paginate, register
+  (returns the one-time plaintext token), read, patch (rename/enable/identity),
+  `POST /{id}/rotate-token` (invalidates the old token immediately), delete, and
+  `GET /sensors/fleet` for a summary (totals + alerts/captures per sensor over
+  the last 24h).
+- **Fleet UI** — the frontend gains a Fleet page (`/fleet`): summary cards,
+  register-with-one-time-token flow, per-sensor enable/disable, token rotation,
+  delete, and status filtering, all via TanStack Query mutations that invalidate
+  the sensor and fleet caches.

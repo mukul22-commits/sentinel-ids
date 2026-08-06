@@ -22,6 +22,9 @@ CAPTURE_ADAPTER_SURICATA = "suricata_eve"
 CAPTURE_ADAPTER_ZEEK = "zeek_conn"
 CAPTURE_RUN_STATUSES = ("succeeded", "failed")
 
+# --- Fleet / multi-sensor management (Phase 8) ---
+SENSOR_STATUSES = ("online", "offline", "disabled")
+
 IOC_TYPES = (
     "ipv4",
     "ipv6",

@@ -118,6 +118,13 @@ alembic upgrade head
 | GET    | `/api/v1/system/siem/status` | SIEM export status, pending alert count, last run |
 | POST   | `/api/v1/system/siem/test` | Send a CEF connectivity test event to the SIEM (admin) |
 | POST   | `/api/v1/system/siem/export` | Run one SIEM export cycle now (admin) |
+| GET    | `/api/v1/sensors/fleet`   | Fleet summary (totals + alerts/captures per sensor, last 24h) |
+| GET    | `/api/v1/sensors`         | List sensors (status filter, paginated) |
+| POST   | `/api/v1/sensors`         | Register a sensor (returns its one-time plaintext token) |
+| GET/PATCH/DELETE | `/api/v1/sensors/{id}` | Read / update (rename, enable, identity) / delete a sensor |
+| POST   | `/api/v1/sensors/{id}/rotate-token` | Rotate a sensor's token (old token invalidated) |
+| POST   | `/api/v1/sensors/heartbeat` | Sensor health report (X-Sensor-Token auth) |
+| GET    | `/api/v1/sensors/config`  | Effective capture config for a sensor (X-Sensor-Token auth) |
 
 All `/api/v1/*` responses use the envelope:
 `{"success": bool, "data": ..., "error": null, "request_id": "..."}`. Every response carries
@@ -260,6 +267,8 @@ composite `(id, ts)`.
 | `SNIFF_INTERFACE` / `SNIFF_COUNT` / `SNIFF_TIMEOUT` | backend env | Scapy live-sniff adapter (requires Npcap/libpcap; leave unset to disable) |
 | `SURICATA_EVE_PATH` / `ZEEK_CONN_LOG_PATH` | backend env | Suricata `eve.json` / Zeek `conn.log` paths (file or dir) for those adapters |
 | `ML_RETRAIN_MIN_SAMPLES` / `ML_RETRAIN_CONTAMINATION` | backend env | ML retraining threshold + anomaly contamination |
+| `SENSOR_TOKEN_BYTES` | backend env | entropy (bytes) per sensor token (default 32) |
+| `SENSOR_STALE_AFTER_SECONDS` / `SENSOR_WATCHDOG_SECONDS` | backend env | heartbeat window before a sensor flips offline + watchdog beat interval |
 
 ## Git workflow
 
