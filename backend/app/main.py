@@ -9,9 +9,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import Gauge
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    REGISTRY,
+    CollectorRegistry,
+    Gauge,
+    generate_latest,
+    multiprocess,
+)
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
+from starlette.responses import Response
 
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.errors import (
@@ -92,9 +100,27 @@ def create_app() -> FastAPI:
     )
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+    Instrumentator().instrument(app)
+    app.add_api_route("/metrics", metrics_endpoint, include_in_schema=False, methods=["GET"])
 
     return app
+
+
+def metrics_endpoint() -> Response:
+    """Expose Prometheus metrics.
+
+    In multi-worker (HA) mode the shared ``PROMETHEUS_MULTIPROC_DIR`` is set
+    before ``prometheus_client`` imports, so per-process counters are aggregated
+    with a ``MultiProcessCollector``; single-process deployments use the default
+    registry directly.
+    """
+    if settings.PROMETHEUS_MULTIPROC_DIR:
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry)  # type: ignore[no-untyped-call]
+        body = generate_latest(registry)
+    else:
+        body = generate_latest(REGISTRY)
+    return Response(content=body, media_type=CONTENT_TYPE_LATEST)
 
 
 app = create_app()

@@ -41,6 +41,20 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD:-sentinel}@postgres:5432/${POSTGRES_DB:-sentinel_ids}
       REDIS_URL: redis://redis:6379/0
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+      UVICORN_GRACEFUL_TIMEOUT: ${UVICORN_GRACEFUL_TIMEOUT:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PROMETHEUS_MULTIPROC_DIR: ${PROMETHEUS_MULTIPROC_DIR:-/tmp/sentinel-prom}
+      SIEM_EXPORT_ENABLED: ${SIEM_EXPORT_ENABLED:-false}
+      SIEM_CEF_ENDPOINT_URL: ${SIEM_CEF_ENDPOINT_URL:-}
+      SIEM_AUTH_TOKEN: ${SIEM_AUTH_TOKEN:-}
+      HTTP_CONNECTOR_URL: ${HTTP_CONNECTOR_URL:-}
+      HTTP_CONNECTOR_TOKEN: ${HTTP_CONNECTOR_TOKEN:-}
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+      EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_FROM_ADDR: ${EMAIL_FROM_ADDR:-sentinel-ids@localhost}
     ports:
       - "8000:8000"
     depends_on:
@@ -60,7 +74,17 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD:-sentinel}@postgres:5432/${POSTGRES_DB:-sentinel_ids}
       REDIS_URL: redis://redis:6379/0
-    command: celery -A app.core.celery_app worker --loglevel=info
+      SIEM_EXPORT_ENABLED: ${SIEM_EXPORT_ENABLED:-false}
+      SIEM_CEF_ENDPOINT_URL: ${SIEM_CEF_ENDPOINT_URL:-}
+      SIEM_AUTH_TOKEN: ${SIEM_AUTH_TOKEN:-}
+      HTTP_CONNECTOR_URL: ${HTTP_CONNECTOR_URL:-}
+      HTTP_CONNECTOR_TOKEN: ${HTTP_CONNECTOR_TOKEN:-}
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+      EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_FROM_ADDR: ${EMAIL_FROM_ADDR:-sentinel-ids@localhost}
+    command: ["sh", "-c", "alembic upgrade head && exec celery -A app.core.celery_app worker --loglevel=info"]
     depends_on:
       postgres:
         condition: service_healthy

@@ -24,6 +24,8 @@ COPY --from=builder /install /install
 COPY --chown=appuser:appgroup app ./app
 COPY --chown=appuser:appgroup alembic ./alembic
 COPY --chown=appuser:appgroup alembic.ini .
+COPY --chown=appuser:appgroup entrypoint.sh .
+RUN chmod +x /app/entrypoint.sh
 
 USER appuser
 
@@ -32,4 +34,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

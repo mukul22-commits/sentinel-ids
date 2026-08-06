@@ -170,11 +170,23 @@ def _action_payload(action: ResponseAction) -> dict[str, Any]:
     }
 
 
+def _alert_context(alert: Alert) -> dict[str, Any]:
+    return {
+        "title": alert.title or "",
+        "severity": alert.severity,
+        "category": alert.category,
+        "src_ip": alert.src_ip,
+        "dst_ip": alert.dst_ip,
+        "risk_score": alert.risk_score,
+    }
+
+
 async def _execute_actions(
-    db: AsyncSession, incident: Incident, actions: list[ResponseAction]
+    db: AsyncSession, incident: Incident, actions: list[ResponseAction], alert: Alert
 ) -> None:
+    context = _alert_context(alert)
     for action in actions:
-        executed = await execute_response_action(db, action)
+        executed = await execute_response_action(db, action, context=context)
         incident.timeline.append(
             _timeline_entry(
                 AUTOMATION_ACTOR,
@@ -231,7 +243,7 @@ async def trigger_automation(db: AsyncSession, alerts: list[Alert]) -> list[dict
                     continue
                 incident = await _create_incident(db, policy, alert, target)
                 actions = await _create_actions(db, policy, alert, target, incident)
-                await _execute_actions(db, incident, actions)
+                await _execute_actions(db, incident, actions, alert)
                 await _announce(db, incident)
                 triggered.append(
                     {

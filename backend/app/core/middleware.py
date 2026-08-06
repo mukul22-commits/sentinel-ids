@@ -9,6 +9,8 @@ import uuid
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.config import settings
+
 REQUEST_ID_HEADER = "X-Request-ID"
 
 access_logger = logging.getLogger("sentinel.access")
@@ -77,7 +79,11 @@ class ProcessTimeMiddleware:
 
 
 class SecurityHeadersMiddleware:
-    """Add basic security headers to every HTTP response."""
+    """Add hardened security headers to every HTTP response.
+
+    API responses are never cached (``Cache-Control: no-store``); HSTS is only
+    emitted in production so dev-over-HTTP remains usable.
+    """
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -93,6 +99,11 @@ class SecurityHeadersMiddleware:
                 headers["X-Content-Type-Options"] = "nosniff"
                 headers["X-Frame-Options"] = "DENY"
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                headers["X-Permitted-Cross-Domain-Policies"] = "none"
+                headers["Cache-Control"] = "no-store"
+                headers["Pragma"] = "no-cache"
+                if settings.ENVIRONMENT == "prod":
+                    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             await send(message)
 
         await self.app(scope, receive, send_with_headers)

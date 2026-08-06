@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Literal, Self
 
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Sentinel IDS Platform"
     APP_VERSION: str = "3.0.0"
     ENVIRONMENT: Environment = "dev"
+    LOG_LEVEL: str = "INFO"
 
     DATABASE_URL: str = Field(
         default="postgresql+asyncpg://sentinel:sentinel@localhost:5432/sentinel_ids"
@@ -31,6 +33,8 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_RECYCLE_SECONDS: int = 300
+    DB_POOL_PRE_PING: bool = True
+    DB_POOL_TIMEOUT: int = 10
 
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_CACHE_TTL_SECONDS: int = 300
@@ -38,11 +42,36 @@ class Settings(BaseSettings):
     CELERY_TASK_ALWAYS_EAGER: bool = False
     CELERY_WORKER_CONCURRENCY: int = 4
     CELERY_BEAT_SCHEDULE_ENABLED: bool = True
+    CELERY_WORKER_MAX_TASKS_PER_CHILD: int = 200
 
     TIMESCALE_CHUNK_INTERVAL_DAYS: int = 1
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     SECRET_KEY: str = "change-me-in-production"
+
+    # --- Production hardening (Phase 7) ---
+    UVICORN_WORKERS: int = 1
+    UVICORN_GRACEFUL_TIMEOUT: int = 30
+    PROMETHEUS_MULTIPROC_DIR: str | None = None
+
+    # --- Connector plugins (Phase 7) ---
+    HTTP_CONNECTOR_URL: str | None = None
+    HTTP_CONNECTOR_TOKEN: str | None = None
+    HTTP_CONNECTOR_TIMEOUT_SECONDS: float = 5.0
+    EMAIL_SMTP_HOST: str | None = None
+    EMAIL_SMTP_PORT: int = 587
+    EMAIL_SMTP_USERNAME: str | None = None
+    EMAIL_SMTP_PASSWORD: str | None = None
+    EMAIL_SMTP_USE_TLS: bool = True
+    EMAIL_FROM_ADDR: str = "sentinel-ids@localhost"
+
+    # --- External SIEM export (Phase 7) ---
+    SIEM_EXPORT_ENABLED: bool = False
+    SIEM_CEF_ENDPOINT_URL: str | None = None
+    SIEM_AUTH_TOKEN: str | None = None
+    SIEM_BATCH_SIZE: int = 100
+    SIEM_EXPORT_SECONDS: int = 60
+    SIEM_HTTP_TIMEOUT_SECONDS: float = 5.0
 
     # --- Auth (Phase 3) ---
     JWT_ALGORITHM: str = "HS256"
@@ -85,6 +114,19 @@ class Settings(BaseSettings):
             return "memory://"
         return self.REDIS_URL
 
+    @property
+    def prometheus_multiproc_dir(self) -> str | None:
+        """Return the Prometheus multiprocess dir, echoing it into the process env.
+
+        ``prometheus_client`` must observe ``PROMETHEUS_MULTIPROC_DIR`` at import
+        time to enable multiprocess (multi-worker HA) metric aggregation, so the
+        environment variable is set here before any prometheus import happens.
+        """
+        directory = self.PROMETHEUS_MULTIPROC_DIR
+        if directory:
+            os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", directory)
+        return directory
+
     @model_validator(mode="after")
     def validate_environment(self) -> Self:
         if self.ENVIRONMENT == "prod" and (
@@ -101,7 +143,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return a cached, validated Settings instance."""
-    return Settings()
+    instance = Settings()
+    instance.prometheus_multiproc_dir  # noqa: B018 - sets PROMETHEUS_MULTIPROC_DIR before prometheus import
+    return instance
 
 
 settings = get_settings()

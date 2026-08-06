@@ -7,3 +7,4 @@ import os
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6390/0")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
+os.environ.pop("PROMETHEUS_MULTIPROC_DIR", None)

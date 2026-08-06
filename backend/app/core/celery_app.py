@@ -10,7 +10,7 @@ celery_app = Celery(
     "sentinel_ids",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.demo", "app.tasks.capture", "app.tasks.ml"],
+    include=["app.tasks.demo", "app.tasks.capture", "app.tasks.ml", "app.tasks.siem"],
 )
 
 celery_app.conf.update(
@@ -21,7 +21,10 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     task_always_eager=settings.CELERY_TASK_ALWAYS_EAGER,
+    task_acks_late=True,
     worker_concurrency=settings.CELERY_WORKER_CONCURRENCY,
+    worker_max_tasks_per_child=settings.CELERY_WORKER_MAX_TASKS_PER_CHILD,
+    worker_prefetch_multiplier=1,
     beat_schedule=(
         {
             "health-check-every-30s": {
@@ -35,6 +38,10 @@ celery_app.conf.update(
             "ml-retrain-daily": {
                 "task": "ml.retrain",
                 "schedule": 86_400.0,
+            },
+            "siem-export-cycle": {
+                "task": "siem.export_alerts",
+                "schedule": settings.SIEM_EXPORT_SECONDS,
             },
         }
         if settings.CELERY_BEAT_SCHEDULE_ENABLED

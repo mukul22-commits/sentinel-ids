@@ -21,6 +21,11 @@ class Alert(Base):
         Index("ix_alerts_detector", "detector"),
         Index("ix_alerts_status", "status"),
         Index("ix_alerts_created_at", "created_at"),
+        Index(
+            "ix_alerts_siem_pending",
+            "id",
+            postgresql_where=text("siem_exported_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -36,4 +41,5 @@ class Alert(Base):
     risk_score: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(Text, server_default=text("'new'"))
     details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    siem_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

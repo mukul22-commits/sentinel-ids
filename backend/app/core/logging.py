@@ -8,6 +8,8 @@ import sys
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.config import settings
+
 LOG_RECORD_STANDARD_KEYS = frozenset(
     {
         "name",
@@ -53,8 +55,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: int = logging.INFO) -> None:
-    """Install a JSON handler on the root logger, writing to stdout."""
+def configure_logging(level: int | None = None) -> None:
+    """Install a JSON handler on the root logger, writing to stdout.
+
+    The level defaults to ``settings.LOG_LEVEL`` when not supplied.
+    """
+    if level is None:
+        level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     root_logger = logging.getLogger()

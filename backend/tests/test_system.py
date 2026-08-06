@@ -49,3 +49,12 @@ async def test_system_stats_cache_hit(monkeypatch) -> None:
     assert first.headers["X-Cache"] == "MISS"
     assert second.headers["X-Cache"] == "HIT"
     assert first.json()["data"] == second.json()["data"]
+
+
+def test_connector_endpoints_require_auth() -> None:
+    with TestClient(app) as client:
+        assert client.get("/api/v1/system/connectors").status_code == 401
+        assert client.post("/api/v1/system/connectors/log_plan/test").status_code == 401
+        assert client.get("/api/v1/system/siem/status").status_code == 401
+        assert client.post("/api/v1/system/siem/test").status_code == 401
+        assert client.post("/api/v1/system/siem/export").status_code == 401

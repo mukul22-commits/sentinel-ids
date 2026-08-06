@@ -113,6 +113,11 @@ alembic upgrade head
 | GET/PATCH/DELETE | `/api/v1/policies/{id}` | Read / update / delete a policy   |
 | GET    | `/api/v1/system/ml`    | ML model artifact + retrain config status |
 | POST   | `/api/v1/system/ml/retrain` | Retrain the ML detector from packet history (admin) |
+| GET    | `/api/v1/system/connectors` | List response connector plugins + enabled state |
+| POST   | `/api/v1/system/connectors/{name}/test` | Probe a connector's endpoint (admin) |
+| GET    | `/api/v1/system/siem/status` | SIEM export status, pending alert count, last run |
+| POST   | `/api/v1/system/siem/test` | Send a CEF connectivity test event to the SIEM (admin) |
+| POST   | `/api/v1/system/siem/export` | Run one SIEM export cycle now (admin) |
 
 All `/api/v1/*` responses use the envelope:
 `{"success": bool, "data": ..., "error": null, "request_id": "..."}`. Every response carries
@@ -145,13 +150,27 @@ make backend-shell
 psql "$DATABASE_URL" -c "SELECT hypertable_name, chunk_time_interval FROM timescaledb_information.hypertables;"
 ```
 
+Phase 7 operational probes (admin token required for the auth-gated routes):
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/system/connectors
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:8000/api/v1/system/connectors/log_plan/test
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/system/siem/status
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:8000/api/v1/system/siem/export
+```
+
+HA note: scale the API with `UVICORN_WORKERS` (set `PROMETHEUS_MULTIPROC_DIR` for
+multi-worker `/metrics` aggregation); the container runs migrations on boot and drains
+gracefully on shutdown.
+
 Frontend: open http://localhost:5173 — the shell shows the title, tagline, and "Backend says:
 ‘pong’", proving the Vite dev proxy reaches FastAPI.
 
 ## Celery worker & Flower
 
-- **Worker** runs `demo.health_check` every 30s via beat (placeholder schedule) and processes
-  queued tasks. Logs are JSON lines; a successful run logs `demo.health_check completed`.
+- **Worker** runs beat tasks (`demo.health_check` every 30s, live-capture cycles,
+  daily ML retraining, and periodic SIEM export) and processes queued tasks. Logs are
+  JSON lines; a successful run logs `demo.health_check completed`.
 - **Flower** is optional (profile `dev`):
 
 ```bash
@@ -231,6 +250,12 @@ composite `(id, ts)`.
 | `TIMESCALE_CHUNK_INTERVAL_DAYS` | backend env | hypertable chunk interval |
 | `CORS_ORIGINS`   | backend env  | JSON list of allowed browser origins |
 | `SECRET_KEY`     | backend env  | placeholder — Phase 3 (auth)     |
+| `LOG_LEVEL` / `UVICORN_WORKERS` / `UVICORN_GRACEFUL_TIMEOUT` | backend env | log level + multi-worker uvicorn + graceful drain (Phase 7) |
+| `PROMETHEUS_MULTIPROC_DIR` | backend env | Prometheus multi-worker aggregation dir (Phase 7) |
+| `DB_POOL_PRE_PING` / `DB_POOL_TIMEOUT` | backend env | pool health validation + acquire timeout |
+| `HTTP_CONNECTOR_URL` / `HTTP_CONNECTOR_TOKEN` | backend env | webhook enforcement connector (block/quarantine) |
+| `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` / `EMAIL_SMTP_USERNAME` / `EMAIL_SMTP_PASSWORD` / `EMAIL_FROM_ADDR` | backend env | SMTP email connector (notify) |
+| `SIEM_EXPORT_ENABLED` / `SIEM_CEF_ENDPOINT_URL` / `SIEM_AUTH_TOKEN` / `SIEM_BATCH_SIZE` / `SIEM_EXPORT_SECONDS` | backend env | ArcSight CEF export to an external SIEM |
 | `CAPTURE_ENABLED` / `CAPTURE_CYCLE_SECONDS` | backend env | live capture master switch + beat interval |
 | `SNIFF_INTERFACE` / `SNIFF_COUNT` / `SNIFF_TIMEOUT` | backend env | Scapy live-sniff adapter (requires Npcap/libpcap; leave unset to disable) |
 | `SURICATA_EVE_PATH` / `ZEEK_CONN_LOG_PATH` | backend env | Suricata `eve.json` / Zeek `conn.log` paths (file or dir) for those adapters |

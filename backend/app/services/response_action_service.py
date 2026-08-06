@@ -1,18 +1,23 @@
-"""Response action orchestration: planning and simulated execution (Phase 4).
+"""Response action orchestration: planning and connector-based execution (Phase 4/7).
 
-Real enforcement (firewall/EDR/email) is deferred; the executor records a
-deterministic plan of steps in ``details`` so the orchestration flow is fully
-exercised end-to-end until connectors land in Phase 5.
+``plan_response_action`` produces a deterministic, simulated plan used by the
+log connector as the default when no real enforcement integration is
+configured. ``execute_response_action`` dispatches through the connector plugin
+registry (webhook for block/quarantine, SMTP email for notify, log fallback) so
+response actions are enforced end to end.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.response_action import ResponseAction
+
+logger = logging.getLogger("sentinel.response_actions")
 
 
 def plan_response_action(
@@ -40,15 +45,39 @@ def plan_response_action(
     return [{"step": "unknown_action", "target": target, "result": "skipped"}]
 
 
-async def execute_response_action(db: AsyncSession, action: ResponseAction) -> ResponseAction:
-    """Simulate execution of a pending/failed action and persist the result."""
+async def execute_response_action(
+    db: AsyncSession,
+    action: ResponseAction,
+    *,
+    context: dict[str, Any] | None = None,
+) -> ResponseAction:
+    """Execute a pending/failed action through the best connector and persist it.
+
+    The connector is selected from the plugin registry; the log connector is the
+    always-available fallback. Connector failures mark the action ``failed``
+    without raising, so automation and manual execution never break.
+    """
+    from app.services.connectors import ConnectorError, select_connector
+
     action.status = "executing"
     await db.flush()
 
-    action.details = plan_response_action(
-        action.action_type, action.target_type, action.target_value
-    )
-    action.status = "succeeded"
+    connector = select_connector(action.action_type)
+    try:
+        steps = await connector.execute(
+            action_type=action.action_type,
+            target_type=action.target_type,
+            target_value=action.target_value,
+            context=context or {},
+        )
+        action.details = steps
+        action.status = "succeeded"
+    except ConnectorError as exc:
+        logger.warning("connector %s failed for action %s: %s", connector.name, action.id, exc)
+        action.details = [
+            {"step": "execute", "connector": connector.name, "result": "failed", "error": str(exc)}
+        ]
+        action.status = "failed"
     action.executed_at = datetime.now(UTC)
 
     await db.commit()

@@ -118,7 +118,7 @@ backend/
 | 4     | Response orchestration, alerting, WebSocket realtime UI, dashboards (Recharts/ApexCharts) | **Done** |
 | 5     | Packet capture + detection engine (signature + ML), rules/IOC management, Prometheus/Grafana/Loki observability, Tailwind v4 | **Done** |
 | 6     | Live capture integration (Scapy sniff, Suricata EVE, Zeek logs), response automation, ML retraining pipeline | **Done** |
-| 7     | Production hardening (HA, external SIEM export, connector plugins) | Planned |
+| 7     | Production hardening (HA, external SIEM export, connector plugins) | **Done** |
 
 ## Phase 6 live capture, automation, and model lifecycle
 
@@ -149,12 +149,44 @@ backend/
   Docker needs the `NET_ADMIN` capability + `SNIFF_INTERFACE`. Suricata/Zeek adapters only
   require mounted log files.
 
+## Phase 7 production hardening, connectors, and SIEM export
+
+- **Connector plugins** — `services/connectors/` defines a `Connector` plugin
+  interface (`enabled()`/`execute()`/`test()`). The default set is `http_webhook`
+  (block/quarantine via HTTP/S webhook with bearer auth), `smtp_email` (notify via
+  SMTP, STARTTLS/implicit TLS, stdlib `smtplib` on a thread pool), and the always-on
+  `log_plan` fallback that records the deterministic Phase 4 plan when no real
+  integration is configured. `select_connector(action_type)` prefers the enabled
+  connector for the action kind and falls back to `log_plan`, so response automation
+  keeps working with zero configuration. `execute_response_action` now dispatches
+  through connectors; failures mark the action `failed` (with the error in
+  `details`) without breaking automation. Connector inventory + connectivity probes:
+  `GET /api/v1/system/connectors`, `POST /api/v1/system/connectors/{name}/test`.
+- **External SIEM export (ArcSight CEF)** — `services/siem/` renders each alert as a
+  CEF line (severity mapped to the 0–10 scale, header/extension escaping) and pushes
+  newline-delimited batches to `SIEM_CEF_ENDPOINT_URL`. Export is durable: a
+  `siem_exports` table records each run and `alerts.siem_exported_at` is a watermark
+  (partial index `ix_alerts_siem_pending` keeps the pending scan fast). The batch
+  query uses `SELECT ... FOR UPDATE SKIP LOCKED`, so concurrent workers each claim
+  disjoint alerts (HA-safe). Export runs on the `siem.export_alerts` Celery beat task
+  (default 60s) or on demand (`POST /api/v1/system/siem/export`); status and endpoint
+  connectivity via `GET /api/v1/system/siem/status` and `POST /api/v1/system/siem/test`.
+- **Production hardening (HA)** — the API runs multiple uvicorn workers
+  (`UVICORN_WORKERS`, graceful drain via `--timeout-graceful-shutdown`); the container
+  entrypoint runs `alembic upgrade head` on boot (skip with `SKIP_MIGRATIONS=1`).
+  Prometheus metrics aggregate across workers via `PROMETHEUS_MULTIPROC_DIR` and a
+  `MultiProcessCollector` on `/metrics`. DB pool uses `pool_pre_ping` + `pool_timeout`
+  for resilience; Celery uses `task_acks_late`, prefetch 1, and per-child task limits.
+  API responses are `no-store` with hardened security headers (HSTS in prod), and
+  `LOG_LEVEL` drives structured JSON logging.
+
 ## Deferred items (intentional)
 
-- Connector plugins for real enforcement (firewall/EDR/email) and external SIEM export land
-  in Phase 7; response actions remain simulated with deterministic plans.
-- `SECRET_KEY` remains a placeholder; production requires an override.
+- Connector implementations beyond webhook/SMTP (firewall SDKs, EDR, SOAR) are
+  drop-in plugins behind the same interface.
+- `SECRET_KEY` remains a placeholder; production requires an override (enforced).
 - Schema evolution is tracked in committed Alembic migrations: `0001` (initial),
   `0002` (response_actions, notifications), `0003` (Phase 3 auth columns),
   `0004` (Phase 5 alert title/detector/details), `0005` (Phase 6
-  `response_policies` + `capture_runs`).
+  `response_policies` + `capture_runs`), `0006` (Phase 7 `alerts.siem_exported_at`
+  watermark + `siem_exports`).
