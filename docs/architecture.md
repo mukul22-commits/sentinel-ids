@@ -183,8 +183,8 @@ backend/
 
 ## Deferred items (intentional)
 
-- Connector implementations beyond webhook/SMTP (firewall SDKs, EDR, SOAR) are
-  drop-in plugins behind the same interface.
+- Connector implementations for additional firewall/EDR vendors follow the same
+  plugin interface as OPNsense/EDR (Phase 9).
 - `SECRET_KEY` remains a placeholder; production requires an override (enforced).
 - Schema evolution is tracked in committed Alembic migrations: `0001` (initial),
   `0002` (response_actions, notifications), `0003` (Phase 3 auth columns),
@@ -231,3 +231,49 @@ backend/
   register-with-one-time-token flow, per-sensor enable/disable, token rotation,
   delete, and status filtering, all via TanStack Query mutations that invalidate
   the sensor and fleet caches.
+
+## Phase 9 advanced detection and response orchestration
+
+- **OIDC single sign-on** — `services/oidc.py` implements the authorization-code
+  flow with PKCE-free state + nonce protection. `GET /api/v1/auth/oidc/config`
+  exposes public discovery (issuer, client id, scopes, redirect path);
+  `GET /api/v1/auth/oidc/authorize` issues a single-use `state`/`nonce` pair
+  (`OIDC_STATE_TTL_SECONDS`, stored in the token store) and returns the provider
+  URL; `GET /api/v1/auth/oidc/callback` validates the state, exchanges the code,
+  verifies the ID token (JWKS, nonce, issuer, audience), enforces the optional
+  `OIDC_DOMAIN` allow-list, auto-provisions the analyst user, and redirects the
+  browser back to the SPA (`FRONTEND_URL`) with the token pair in a URL fragment.
+- **SOAR connectors** — `services/connectors/opnsense.py` talks to an OPNsense
+  firewall (HMAC-SHA512 `X-API-Signature` over path+body, `alias_util/add` +
+  `alias/reconfigure`) for block actions; `services/connectors/edr.py` drives a
+  generic EDR API (bearer auth) with quarantine→isolate-host and block→block-IP
+  mapping. `connectors/__init__.py` builds a priority-ordered
+  `ACTION_KIND` dispatch table — `block` → firewall, then HTTP webhook;
+  `quarantine` → EDR, then HTTP webhook; `notify` → SMTP — so `execute_response_action`
+  tries the most capable enabled connector first. `OPNSENSE_BLOCKLIST_ALIAS`
+  targets the firewall alias. Connector inventory/test: `GET
+  /api/v1/system/connectors`, `POST /api/v1/system/connectors/{name}/test`.
+
+## Phase 10 operations console
+
+- **Policies UI** — a `/policies` page lists, filters, creates, edits, enables,
+  and deletes response policies against `GET/POST/PATCH/DELETE /api/v1/policies`,
+  with a structured editor for conditions (severity/detectors/categories/min risk
+  score) and the action list.
+- **System status UI** — a `/system` page surfaces connector plugins
+  (`GET /api/v1/system/connectors` + per-connector test), SIEM export state
+  (`GET /api/v1/system/siem/status`, test event, on-demand export), and ML model
+  artifacts (`GET /api/v1/system/ml`, `/autoencoder`, and retrain actions).
+- **Detection health UI** — a `/detection` page shows YARA engine status
+  (rules dir, rule count, load errors, reload) via
+  `GET/POST /api/v1/system/detection/yara[/reload]` and UEBA baselines
+  (`GET /api/v1/system/detection/ueba`, rebuild).
+- **SSO login** — the login page probes `GET /api/v1/auth/oidc/config` and, when
+  enabled, offers "Sign in with SSO", which calls `/oidc/authorize` and redirects
+  to the IdP; the SPA route `/auth/oidc/callback` receives the token pair from
+  the backend redirect and stores it. `FRONTEND_URL` (default
+  `http://localhost:5173`) controls the post-auth SPA origin.
+- **Frontend test + build tooling** — vitest + Testing Library unit tests
+  (`npm run test`), a production multi-stage image (`Dockerfile.prod`, vite build
+  → nginx with `/api` and `/ws` proxying to the backend service), and CI coverage
+  for the frontend test and production-image build steps.

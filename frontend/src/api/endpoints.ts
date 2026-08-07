@@ -3,17 +3,27 @@ import type {
   ActionStatus,
   ActionType,
   ActionTargetType,
+  AutoencoderStatus,
+  ConnectorStatus,
   FleetSummary,
   Incident,
   IncidentSeverity,
   IncidentStatus,
+  MlStatus,
   Notification,
+  OidcAuthorize,
+  OidcConfig,
   Paginated,
+  PolicyConditions,
   ResponseAction,
+  ResponsePolicy,
   Sensor,
   SensorStatus,
+  SiemStatus,
   TokenPair,
+  UebaStatus,
   User,
+  YaraStatus,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -192,6 +202,113 @@ export async function rotateSensorToken(id: number): Promise<{ token: string }> 
 
 export async function deleteSensor(id: number): Promise<{ deleted: boolean }> {
   return api.del<{ deleted: boolean }>(`${BASE}/sensors/${id}`);
+}
+
+export interface PolicyInput {
+  name: string;
+  enabled?: boolean;
+  conditions?: PolicyConditions;
+  actions?: Array<{
+    action_type: ActionType;
+    target_type: ActionTargetType;
+    target_value: string;
+  }>;
+  cooldown_seconds?: number;
+}
+
+export async function listPolicies(
+  query: { enabled?: boolean; page?: number; page_size?: number } = {},
+): Promise<Paginated<ResponsePolicy>> {
+  const params = new URLSearchParams();
+  if (query.enabled !== undefined) params.set("enabled", String(query.enabled));
+  if (query.page) params.set("page", String(query.page));
+  if (query.page_size) params.set("page_size", String(query.page_size));
+  const qs = params.toString();
+  return api.get<Paginated<ResponsePolicy>>(`${BASE}/policies${qs ? `?${qs}` : ""}`);
+}
+
+export async function getPolicy(id: number): Promise<ResponsePolicy> {
+  return api.get<ResponsePolicy>(`${BASE}/policies/${id}`);
+}
+
+export async function createPolicy(input: PolicyInput): Promise<ResponsePolicy> {
+  return api.post<ResponsePolicy>(`${BASE}/policies`, input);
+}
+
+export async function updatePolicy(
+  id: number,
+  input: Partial<PolicyInput>,
+): Promise<ResponsePolicy> {
+  return api.patch<ResponsePolicy>(`${BASE}/policies/${id}`, input);
+}
+
+export async function deletePolicy(id: number): Promise<void> {
+  await api.del<{ deleted: boolean }>(`${BASE}/policies/${id}`);
+}
+
+export async function listConnectors(): Promise<ConnectorStatus[]> {
+  return api.get<ConnectorStatus[]>(`${BASE}/system/connectors`);
+}
+
+export async function testConnector(name: string): Promise<Record<string, unknown>> {
+  return api.postEmpty<Record<string, unknown>>(`${BASE}/system/connectors/${name}/test`);
+}
+
+export async function getSiemStatus(): Promise<SiemStatus> {
+  return api.get<SiemStatus>(`${BASE}/system/siem/status`);
+}
+
+export async function testSiem(): Promise<Record<string, unknown>> {
+  return api.postEmpty<Record<string, unknown>>(`${BASE}/system/siem/test`);
+}
+
+export async function exportSiem(): Promise<Record<string, unknown>> {
+  return api.postEmpty<Record<string, unknown>>(`${BASE}/system/siem/export`);
+}
+
+export async function getMlStatus(): Promise<MlStatus> {
+  return api.get<MlStatus>(`${BASE}/system/ml`);
+}
+
+export async function retrainMl(): Promise<Record<string, unknown>> {
+  return api.postEmpty<Record<string, unknown>>(`${BASE}/system/ml/retrain`);
+}
+
+export async function getAutoencoderStatus(): Promise<AutoencoderStatus> {
+  return api.get<AutoencoderStatus>(`${BASE}/system/ml/autoencoder`);
+}
+
+export async function retrainAutoencoder(): Promise<Record<string, unknown>> {
+  return api.postEmpty<Record<string, unknown>>(`${BASE}/system/ml/autoencoder/retrain`);
+}
+
+export async function getYaraStatus(): Promise<YaraStatus> {
+  return api.get<YaraStatus>(`${BASE}/system/detection/yara`);
+}
+
+export async function reloadYaraRules(): Promise<{
+  rule_count: number;
+  load_errors: Array<{ file: string; error: string }>;
+}> {
+  return api.postEmpty<{ rule_count: number; load_errors: Array<{ file: string; error: string }> }>(
+    `${BASE}/system/detection/yara/reload`,
+  );
+}
+
+export async function getUebaStatus(): Promise<UebaStatus> {
+  return api.get<UebaStatus>(`${BASE}/system/detection/ueba`);
+}
+
+export async function retrainUeba(): Promise<Record<string, unknown>> {
+  return api.postEmpty<Record<string, unknown>>(`${BASE}/system/detection/ueba/retrain`);
+}
+
+export async function getOidcConfig(): Promise<OidcConfig> {
+  return api.get<OidcConfig>(`${BASE}/auth/oidc/config`);
+}
+
+export async function oidcAuthorize(): Promise<OidcAuthorize> {
+  return api.get<OidcAuthorize>(`${BASE}/auth/oidc/authorize`);
 }
 
 export const ACTION_STATUSES: ActionStatus[] = ["pending", "executing", "succeeded", "failed"];

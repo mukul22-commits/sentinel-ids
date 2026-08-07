@@ -42,6 +42,7 @@ from app.schemas.user import UserRead
 from app.services import oidc as oidc_service
 from app.services.audit import audit, client_ip_from
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -420,18 +421,17 @@ async def oidc_authorize(request: Request) -> Envelope[OidcAuthorizeResponse]:
     )
 
 
-@router.get("/oidc/callback", response_model=Envelope[TokenPair])
+@router.get("/oidc/callback")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 async def oidc_callback(
     request: Request,
     db: DbSession,
     code: str = Query(min_length=1),
     state: str = Query(min_length=1),
-) -> Envelope[TokenPair]:
+) -> RedirectResponse:
     """Complete the flow: validate ``state``, exchange ``code`` for tokens,
-    verify the ID token, then auto-provision/lookup the user and issue a
-    Sentinel token pair."""
-    request_id = get_request_id(request)
+    verify the ID token, then auto-provision/lookup the user and redirect the
+    browser back to the SPA with the token pair in a URL fragment."""
     payload = await token_store.consume_oidc_state(state)
     if payload is None or not payload.startswith("nonce:"):
         raise HTTPException(status_code=400, detail="Invalid or expired OIDC state")
@@ -491,4 +491,13 @@ async def oidc_callback(
             ip=client_ip_from(request),
             user_agent=request.headers.get("user-agent"),
         )
-    return Envelope(success=True, data=_token_pair(user), request_id=request_id)
+    pair = _token_pair(user)
+    fragment = (
+        f"access_token={pair.access_token}"
+        f"&refresh_token={pair.refresh_token}"
+        f"&expires_in={pair.expires_in}"
+        f"&refresh_expires_in={pair.refresh_expires_in}"
+    )
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}/#/auth/oidc/callback?{fragment}", status_code=302
+    )

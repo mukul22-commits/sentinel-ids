@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { getOidcConfig, oidcAuthorize } from "../api/endpoints";
 import { InlineError } from "../components/Spinner";
 
 type Mode = "signin" | "signup";
@@ -14,12 +15,28 @@ export default function Login() {
   const [mode, setMode] = useState<Mode>("signin");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [ssoBusy, setSsoBusy] = useState(false);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    getOidcConfig()
+      .then((config) => {
+        if (!cancelled) setSsoEnabled(config.enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setSsoEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (status === "authenticated") {
     return <Navigate to="/" replace />;
@@ -40,6 +57,18 @@ export default function Login() {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSso() {
+    setError(null);
+    setSsoBusy(true);
+    try {
+      const result = await oidcAuthorize();
+      window.location.assign(result.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "SSO unavailable");
+      setSsoBusy(false);
     }
   }
 
@@ -195,6 +224,24 @@ export default function Login() {
               {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
             </button>
           </form>
+
+          {ssoEnabled && mode === "signin" && (
+            <>
+              <div className="my-4 flex items-center gap-3 text-xs uppercase tracking-wide text-slate-500">
+                <span className="h-px flex-1 bg-slate-700" />
+                or
+                <span className="h-px flex-1 bg-slate-700" />
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSso()}
+                disabled={ssoBusy}
+                className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+              >
+                {ssoBusy ? "Redirecting…" : "Sign in with SSO"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -110,3 +110,108 @@ export interface FleetSummary {
   alerts_by_sensor: Record<string, number>;
   captures_by_sensor: Record<string, number>;
 }
+
+export interface PolicyAction {
+  action_type: ActionType;
+  target_type: ActionTargetType;
+  target_value: string;
+}
+
+export interface PolicyConditions {
+  severity: string[];
+  detectors: string[];
+  categories: string[];
+  min_risk_score: number;
+}
+
+export interface ResponsePolicy {
+  id: number;
+  name: string;
+  enabled: boolean;
+  conditions: PolicyConditions;
+  actions: PolicyAction[];
+  cooldown_seconds: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConnectorStatus {
+  name: string;
+  kind: string;
+  enabled: boolean;
+  description: string;
+}
+
+export interface SiemRun {
+  id: number;
+  status: string;
+  alerts_exported: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface SiemStatus {
+  enabled: boolean;
+  endpoint_configured: boolean;
+  endpoint: string | null;
+  batch_size: number;
+  configured: boolean;
+  pending_alerts: number;
+  last_run: SiemRun | null;
+}
+
+export interface ModelMetadata {
+  path: string;
+  exists: boolean;
+  enabled: boolean;
+  size_bytes?: number;
+  modified_at?: string;
+}
+
+export interface MlStatus extends ModelMetadata {
+  min_samples: number;
+  contamination: number;
+}
+
+export interface AutoencoderStatus extends ModelMetadata {
+  threshold: number;
+}
+
+export interface UebaStatus extends ModelMetadata {
+  window_hours: number;
+  threshold: number;
+}
+
+export interface YaraRuleRef {
+  file: string;
+  name: string;
+}
+
+export interface YaraLoadError {
+  file: string;
+  error: string;
+}
+
+export interface YaraStatus {
+  enabled: boolean;
+  rules_dir: string;
+  max_payload_bytes: number;
+  rule_count: number;
+  rules: YaraRuleRef[];
+  load_errors: YaraLoadError[];
+}
+
+export interface OidcConfig {
+  enabled: boolean;
+  issuer: string | null;
+  client_id: string | null;
+  scopes: string;
+  redirect_path: string;
+}
+
+export interface OidcAuthorize {
+  url: string;
+  state: string;
+}

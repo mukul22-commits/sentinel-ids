@@ -48,6 +48,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     SECRET_KEY: str = "change-me-in-production"
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # --- Production hardening (Phase 7) ---
     UVICORN_WORKERS: int = 1

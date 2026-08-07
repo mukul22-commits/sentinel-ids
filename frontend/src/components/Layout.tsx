@@ -7,6 +7,9 @@ const NAV_LINKS = [
   { to: "/", label: "Dashboard" },
   { to: "/incidents", label: "Incidents" },
   { to: "/fleet", label: "Fleet" },
+  { to: "/policies", label: "Policies" },
+  { to: "/system", label: "System" },
+  { to: "/detection", label: "Detection" },
 ];
 
 function navClass(isActive: boolean): string {

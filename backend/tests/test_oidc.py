@@ -280,11 +280,13 @@ class TestOidcEndpoints:
         response = app_client.get(
             "/api/v1/auth/oidc/callback?code=code-1&state=state-ok",
             headers={"X-Forwarded-For": "10.0.0.4"},
+            follow_redirects=False,
         )
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["access_token"]
-        assert data["refresh_token"]
+        assert response.status_code == 302
+        location = response.headers["location"]
+        assert location.startswith("http://localhost:5173/#/auth/oidc/callback?")
+        assert "access_token=" in location
+        assert "refresh_token=" in location
 
         async with db_factory() as session:
             user = await session.scalar(select(User).where(User.email == "new.user@example.com"))
@@ -320,9 +322,10 @@ class TestOidcEndpoints:
         response = app_client.get(
             "/api/v1/auth/oidc/callback?code=code-1&state=state-ok",
             headers={"X-Forwarded-For": "10.0.0.5"},
+            follow_redirects=False,
         )
-        assert response.status_code == 200
-        assert response.json()["data"]["access_token"]
+        assert response.status_code == 302
+        assert "access_token=" in response.headers["location"]
 
         async with db_factory() as session:
             user = await session.scalar(select(User).where(User.email == "existing@example.com"))

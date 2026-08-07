@@ -61,6 +61,10 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm run test
+
   test:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -101,3 +105,7 @@ jobs:
       - name: Build backend + frontend images
         working-directory: infra
         run: docker compose build
+
+      - name: Build production frontend image
+        working-directory: frontend
+        run: docker build -f Dockerfile.prod -t sentinel-frontend:prod .
