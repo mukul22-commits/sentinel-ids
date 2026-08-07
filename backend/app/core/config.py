@@ -150,6 +150,7 @@ class Settings(BaseSettings):
     OPNSENSE_CONNECTOR_KEY: str | None = None
     OPNSENSE_CONNECTOR_SECRET: str | None = None
     OPNSENSE_CONNECTOR_TIMEOUT_SECONDS: float = 5.0
+    OPNSENSE_BLOCKLIST_ALIAS: str = "sentinel_blocklist"
     EDR_CONNECTOR_URL: str | None = None
     EDR_CONNECTOR_TOKEN: str | None = None
     EDR_CONNECTOR_TIMEOUT_SECONDS: float = 5.0

@@ -1,7 +1,9 @@
-"""Unit tests for the connector plugin framework (Phase 7)."""
+"""Unit tests for the connector plugin framework (Phase 7/9)."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from typing import Any
 
 import httpx
@@ -13,9 +15,11 @@ from app.services.connectors import (
     select_connector,
 )
 from app.services.connectors.base import ConnectorError
+from app.services.connectors.edr import EdrConnector
 from app.services.connectors.email import EmailConnector
 from app.services.connectors.http import HttpConnector
 from app.services.connectors.log import LogConnector
+from app.services.connectors.opnsense import OpnsenseConnector
 from app.services.response_action_service import execute_response_action
 
 
@@ -284,3 +288,247 @@ class TestExecuteResponseActionDispatch:
         executed = await execute_response_action(_FakeDb(), action)
         assert executed.status == "failed"
         assert executed.details[0]["result"] == "failed"
+
+
+class _FakeRestClient:
+    """Async context-manager client capturing all HTTP verbs."""
+
+    def __init__(self, *, status_code: int = 200, raise_connect: bool = False) -> None:
+        self.status_code = status_code
+        self.raise_connect = raise_connect
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def __aenter__(self) -> _FakeRestClient:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return False
+
+    def _record(self, method: str, url: str, **kwargs: Any) -> _FakeResponse:
+        if self.raise_connect:
+            raise httpx.ConnectError("boom")
+        self.calls.append((method, url, kwargs))
+        return _FakeResponse(self.status_code)
+
+    async def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        return self._record("GET", url, **kwargs)
+
+    async def post(self, url: str, **kwargs: Any) -> _FakeResponse:
+        return self._record("POST", url, **kwargs)
+
+    async def put(self, url: str, **kwargs: Any) -> _FakeResponse:
+        return self._record("PUT", url, **kwargs)
+
+
+def _expected_opnsense_signature(path: str) -> str:
+    return hmac.new(
+        settings.OPNSENSE_CONNECTOR_SECRET.encode("utf-8"),
+        path.encode("utf-8"),
+        hashlib.sha512,
+    ).hexdigest()
+
+
+class TestOpnsenseConnector:
+    async def test_disabled_without_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", None)
+        assert not OpnsenseConnector().enabled()
+
+    async def test_registered(self) -> None:
+        assert connector_registry.get("opnsense_firewall") is not None
+
+    async def test_execute_block_adds_to_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=200)
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", "https://fw.local")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_KEY", "key-1")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_SECRET", "secret-1")
+        monkeypatch.setattr(
+            "app.services.connectors.opnsense.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+
+        steps = await OpnsenseConnector().execute(
+            action_type="block",
+            target_type="ip",
+            target_value="203.0.113.5",
+            context={},
+        )
+        methods = [method for method, _, _ in client.calls]
+        assert methods == ["PUT", "POST"]
+        put_method, put_url, put_kwargs = client.calls[0]
+        assert (
+            put_url == "https://fw.local/api/firewall/alias_util/add/sentinel_blocklist/203.0.113.5"
+        )
+        assert put_kwargs["headers"]["X-API-Key"] == "key-1"
+        assert put_kwargs["headers"]["X-API-Signature"] == _expected_opnsense_signature(
+            "/api/firewall/alias_util/add/sentinel_blocklist/203.0.113.5"
+        )
+        assert steps[-1]["result"] == "ok"
+        assert steps[-1]["http_status"] == 200
+
+    async def test_execute_reconfigures_firewall(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=200)
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", "https://fw.local")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_KEY", "key-1")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_SECRET", "secret-1")
+        monkeypatch.setattr(
+            "app.services.connectors.opnsense.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+
+        await OpnsenseConnector().execute(
+            action_type="block",
+            target_type="subnet",
+            target_value="10.0.0.0/24",
+            context={},
+        )
+        _, post_url, _ = client.calls[1]
+        assert post_url == "https://fw.local/api/firewall/alias/reconfigure"
+
+    async def test_execute_skips_non_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", "https://fw.local")
+        steps = await OpnsenseConnector().execute(
+            action_type="quarantine",
+            target_type="host",
+            target_value="h1",
+            context={},
+        )
+        assert steps[0]["result"] == "skipped"
+
+    async def test_execute_raises_on_http_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=500)
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", "https://fw.local")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_KEY", "key-1")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_SECRET", "secret-1")
+        monkeypatch.setattr(
+            "app.services.connectors.opnsense.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+        with pytest.raises(ConnectorError):
+            await OpnsenseConnector().execute(
+                action_type="block",
+                target_type="ip",
+                target_value="203.0.113.5",
+                context={},
+            )
+
+    async def test_test_probes_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=200)
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", "https://fw.local")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_KEY", "key-1")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_SECRET", "secret-1")
+        monkeypatch.setattr(
+            "app.services.connectors.opnsense.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+        result = await OpnsenseConnector().test()
+        assert result["status"] == "ok"
+        assert client.calls[0][0] == "GET"
+
+
+class TestEdrConnector:
+    async def test_disabled_without_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", None)
+        assert not EdrConnector().enabled()
+
+    async def test_registered(self) -> None:
+        assert connector_registry.get("edr_endpoint") is not None
+
+    async def test_execute_quarantine_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=200)
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", "https://edr.local")
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_TOKEN", "tok")
+        monkeypatch.setattr(
+            "app.services.connectors.edr.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+
+        steps = await EdrConnector().execute(
+            action_type="quarantine",
+            target_type="host",
+            target_value="h1",
+            context={},
+        )
+        assert steps[-1]["result"] == "ok"
+        method, url, kwargs = client.calls[-1]
+        assert (method, url) == ("POST", "https://edr.local/api/v1/enforcement/isolate")
+        assert kwargs["json"] == {"host": "h1"}
+        assert kwargs["headers"]["Authorization"] == "Bearer tok"
+
+    async def test_execute_block_ip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=200)
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", "https://edr.local")
+        monkeypatch.setattr(
+            "app.services.connectors.edr.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+        await EdrConnector().execute(
+            action_type="block",
+            target_type="ip",
+            target_value="198.51.100.9",
+            context={},
+        )
+        _, url, kwargs = client.calls[-1]
+        assert url == "https://edr.local/api/v1/enforcement/block"
+        assert kwargs["json"] == {"ip": "198.51.100.9"}
+
+    async def test_execute_skips_unsupported(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", "https://edr.local")
+        steps = await EdrConnector().execute(
+            action_type="notify",
+            target_type="email",
+            target_value="a@b.c",
+            context={},
+        )
+        assert steps[0]["result"] == "skipped"
+
+    async def test_execute_raises_on_transport_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _FakeRestClient(raise_connect=True)
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", "https://edr.local")
+        monkeypatch.setattr(
+            "app.services.connectors.edr.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+        with pytest.raises(ConnectorError):
+            await EdrConnector().execute(
+                action_type="quarantine",
+                target_type="host",
+                target_value="h1",
+                context={},
+            )
+
+    async def test_test_probes_status(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = _FakeRestClient(status_code=200)
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", "https://edr.local")
+        monkeypatch.setattr(
+            "app.services.connectors.edr.httpx.AsyncClient",
+            lambda *a, **k: client,
+        )
+        result = await EdrConnector().test()
+        assert result["status"] == "ok"
+        assert client.calls[0][1] == "https://edr.local/api/v1/status"
+
+
+class TestSoarDispatchPreference:
+    def test_block_prefers_opnsense_when_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", "https://fw.local")
+        assert select_connector("block").name == "opnsense_firewall"
+
+    def test_quarantine_prefers_edr_when_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", "https://edr.local")
+        assert select_connector("quarantine").name == "edr_endpoint"
+
+    def test_block_falls_back_to_http_without_firewall(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "HTTP_CONNECTOR_URL", "http://webhook.local")
+        monkeypatch.setattr(settings, "OPNSENSE_CONNECTOR_URL", None)
+        assert select_connector("block").name == "http_webhook"
+
+    def test_quarantine_falls_back_to_http_without_edr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "HTTP_CONNECTOR_URL", "http://webhook.local")
+        monkeypatch.setattr(settings, "EDR_CONNECTOR_URL", None)
+        assert select_connector("quarantine").name == "http_webhook"
