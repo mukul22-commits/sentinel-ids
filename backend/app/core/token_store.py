@@ -27,6 +27,7 @@ BLOCK_PREFIX = "jwt:blocked:"
 USED_PREFIX = "jwt:used:"
 USER_REVOKED_PREFIX = "jwt:user:revoked:"
 RESET_PREFIX = "reset:"
+OIDC_PREFIX = "oidc:state:"
 
 
 class TokenStore:
@@ -183,6 +184,41 @@ class TokenStore:
             raw = self._mem_get(f"{RESET_PREFIX}{token}")
             self._mem_delete(f"{RESET_PREFIX}{token}")
             return int(raw) if raw is not None else None
+        finally:
+            await client.aclose()
+
+    # --- OIDC auth state ------------------------------------------------------
+
+    async def store_oidc_state(self, state: str, value: str, ttl: int) -> None:
+        """Store the OIDC ``state``/``nonce`` payload for the authorization step."""
+        client = await self._client()
+        if client is None:
+            self._mem_set(f"{OIDC_PREFIX}{state}", value, ttl)
+            return
+        try:
+            await client.set(f"{OIDC_PREFIX}{state}", value, ex=ttl)
+        except RedisError:
+            self._mem_set(f"{OIDC_PREFIX}{state}", value, ttl)
+        finally:
+            await client.aclose()
+
+    async def consume_oidc_state(self, state: str) -> str | None:
+        """Return and invalidate (single-use) the payload bound to ``state``."""
+        client = await self._client()
+        if client is None:
+            raw: bytes | str | None = self._mem_get(f"{OIDC_PREFIX}{state}")
+            self._mem_delete(f"{OIDC_PREFIX}{state}")
+            return raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        try:
+            raw = await client.get(f"{OIDC_PREFIX}{state}")
+            if raw is None:
+                return None
+            await client.delete(f"{OIDC_PREFIX}{state}")
+            return raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        except RedisError:
+            raw = self._mem_get(f"{OIDC_PREFIX}{state}")
+            self._mem_delete(f"{OIDC_PREFIX}{state}")
+            return raw
         finally:
             await client.aclose()
 

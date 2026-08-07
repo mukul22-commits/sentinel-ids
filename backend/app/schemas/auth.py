@@ -41,3 +41,21 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=16)
     new_password: str = Field(min_length=1, max_length=128)
+
+
+class OidcConfigRead(BaseModel):
+    """Public OIDC discovery info exposed to the frontend."""
+
+    enabled: bool
+    issuer: str | None
+    client_id: str | None
+    scopes: str
+    redirect_path: str
+
+
+class OidcAuthorizeResponse(BaseModel):
+    """Result of the ``/auth/oidc/authorize`` step: the provider URL to
+    redirect the browser to, plus the ``state`` to hand back on callback."""
+
+    url: str
+    state: str

@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     OIDC_DOMAIN: str | None = None
     OIDC_REDIRECT_PATH: str = "/api/v1/auth/oidc/callback"
     OIDC_HTTP_TIMEOUT_SECONDS: float = 5.0
+    OIDC_STATE_TTL_SECONDS: int = 600
 
     # --- Secret management (Phase 9) ---
     SECRET_KEY_FILE: str | None = None

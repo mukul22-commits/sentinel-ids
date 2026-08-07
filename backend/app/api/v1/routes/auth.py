@@ -6,8 +6,9 @@ import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
+import httpx
 from app.api.v1.deps import DbSession, get_bearer_token, get_current_user, get_request_id
 from app.core.config import settings
 from app.core.limiter import limiter
@@ -29,6 +30,8 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
+    OidcAuthorizeResponse,
+    OidcConfigRead,
     RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -36,8 +39,9 @@ from app.schemas.auth import (
 )
 from app.schemas.common import Envelope
 from app.schemas.user import UserRead
+from app.services import oidc as oidc_service
 from app.services.audit import audit, client_ip_from
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -354,3 +358,137 @@ async def me(
         data=UserRead.model_validate(user),
         request_id=get_request_id(request),
     )
+
+
+# --- OIDC single sign-on (Phase 9) -------------------------------------------
+
+
+def _oidc_redirect_uri(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + settings.OIDC_REDIRECT_PATH
+
+
+def _oidc_subject_email(claims: dict[str, Any]) -> str:
+    email = oidc_service.subject_from_claims(claims)
+    if settings.OIDC_DOMAIN and not email.endswith(f"@{settings.OIDC_DOMAIN}"):
+        raise HTTPException(status_code=403, detail="Email domain not allowed by OIDC_DOMAIN")
+    return email
+
+
+@router.get("/oidc/config", response_model=Envelope[OidcConfigRead])
+@limiter.limit(settings.RATE_LIMIT_API)
+async def oidc_config(request: Request) -> Envelope[OidcConfigRead]:
+    return Envelope(
+        success=True,
+        data=OidcConfigRead(
+            enabled=oidc_service.oidc_enabled(),
+            issuer=settings.OIDC_ISSUER,
+            client_id=settings.OIDC_CLIENT_ID,
+            scopes=settings.OIDC_SCOPES,
+            redirect_path=settings.OIDC_REDIRECT_PATH,
+        ),
+        request_id=get_request_id(request),
+    )
+
+
+@router.get("/oidc/authorize", response_model=Envelope[OidcAuthorizeResponse])
+@limiter.limit(settings.RATE_LIMIT_AUTH)
+async def oidc_authorize(request: Request) -> Envelope[OidcAuthorizeResponse]:
+    """Start the authorization-code flow: issue a ``state``/``nonce`` pair,
+    persist them, and return the provider's authorization URL."""
+    request_id = get_request_id(request)
+    if not oidc_service.oidc_enabled():
+        raise HTTPException(status_code=404, detail="OIDC is not enabled")
+    state = secrets.token_urlsafe(24)
+    nonce = oidc_service.generate_nonce()
+    payload = f"nonce:{nonce}"
+    await token_store.store_oidc_state(state, payload, settings.OIDC_STATE_TTL_SECONDS)
+    try:
+        async with httpx.AsyncClient() as http:
+            url = await oidc_service.authorization_url(
+                http,
+                state=state,
+                nonce=nonce,
+                redirect_uri=_oidc_redirect_uri(request),
+            )
+    except oidc_service.OidcError as exc:
+        await token_store.consume_oidc_state(state)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Envelope(
+        success=True,
+        data=OidcAuthorizeResponse(url=url, state=state),
+        request_id=request_id,
+    )
+
+
+@router.get("/oidc/callback", response_model=Envelope[TokenPair])
+@limiter.limit(settings.RATE_LIMIT_AUTH)
+async def oidc_callback(
+    request: Request,
+    db: DbSession,
+    code: str = Query(min_length=1),
+    state: str = Query(min_length=1),
+) -> Envelope[TokenPair]:
+    """Complete the flow: validate ``state``, exchange ``code`` for tokens,
+    verify the ID token, then auto-provision/lookup the user and issue a
+    Sentinel token pair."""
+    request_id = get_request_id(request)
+    payload = await token_store.consume_oidc_state(state)
+    if payload is None or not payload.startswith("nonce:"):
+        raise HTTPException(status_code=400, detail="Invalid or expired OIDC state")
+    nonce = payload.removeprefix("nonce:")
+    if not nonce:
+        raise HTTPException(status_code=400, detail="Invalid or expired OIDC state")
+
+    try:
+        async with httpx.AsyncClient() as http:
+            tokens = await oidc_service.exchange_code(code, _oidc_redirect_uri(request), http)
+            claims = await oidc_service.verify_id_token(tokens.id_token, nonce, http)
+    except oidc_service.OidcError as exc:
+        await audit(
+            db,
+            action="auth.oidc_failed",
+            resource="auth",
+            ip=client_ip_from(request),
+            user_agent=request.headers.get("user-agent"),
+            details={"error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    email = _oidc_subject_email(claims)
+    user = await db.scalar(select(User).where(User.email == email))
+    if user is not None and not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is inactive")
+    if user is None:
+        username = email.partition("@")[0] or claims.get("preferred_username", "oidc")
+        if await db.scalar(select(User.id).where(User.username == username)):
+            username = f"{username}.{uuid.uuid4().hex[:6]}"
+        user = User(
+            email=email,
+            username=username,
+            full_name=claims.get("name"),
+            role=ROLE_ANALYST,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        await audit(
+            db,
+            action="auth.oidc_provision",
+            resource=f"user:{user.id}",
+            actor_id=user.id,
+            ip=client_ip_from(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    else:
+        user.last_login_at = datetime.now(UTC)
+        await db.commit()
+        await audit(
+            db,
+            action="auth.login",
+            resource=f"user:{user.id}",
+            actor_id=user.id,
+            ip=client_ip_from(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    return Envelope(success=True, data=_token_pair(user), request_id=request_id)
