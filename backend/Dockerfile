@@ -11,12 +11,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PATH="/install/bin:$PATH" \
-    PYTHONPATH="/app"
+    PYTHONPATH="/app:/install/lib/python3.12/site-packages"
 
 RUN addgroup --system --gid 1001 appgroup \
     && adduser --system --uid 1001 --ingroup appgroup appuser \
-    && mkdir -p /app /install \
-    && chown -R appuser:appgroup /app /install
+    && mkdir -p /app /install /tmp/sentinel-prom \
+    && chown -R appuser:appgroup /app /install /tmp/sentinel-prom
 
 WORKDIR /app
 
