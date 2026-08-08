@@ -437,14 +437,33 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.frontend.arn
+  # Without a domain, serve over plain HTTP.
+  dynamic "default_action" {
+    for_each = var.domain_name != "" ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.frontend.arn
+    }
+  }
+
+  # With a domain, force HTTPS by redirecting every HTTP request.
+  dynamic "default_action" {
+    for_each = var.domain_name != "" ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
   }
 }
 
 # /api and /ws go to the backend; everything else (/) goes to the frontend.
+# Only kept when no domain is configured (otherwise HTTP simply redirects to HTTPS).
 resource "aws_lb_listener_rule" "api" {
+  count        = var.domain_name != "" ? 0 : 1
   listener_arn = aws_lb_listener.http.arn
   priority     = 100
 
@@ -460,23 +479,60 @@ resource "aws_lb_listener_rule" "api" {
   }
 }
 
-# Optional HTTPS listener; wire a certificate via ACM once the domain is set.
-# resource "aws_acm_certificate" "sentinel" {
-#   domain_name       = "sentinel.example.com"
-#   validation_method = "DNS"
-# }
-#
-# resource "aws_lb_listener" "https" {
-#   load_balancer_arn = aws_lb.sentinel.arn
-#   port              = 443
-#   protocol          = "HTTPS"
-#   certificate_arn   = aws_acm_certificate.sentinel.arn
-#
-#   default_action {
-#     type             = "forward"
-#     target_group_arn = aws_lb_target_group.frontend.arn
-#   }
-# }
+# ---------------------------------------------------------------------------
+# HTTPS (optional): enabled by setting domain_name + route53_zone_id.
+# ---------------------------------------------------------------------------
+
+resource "aws_acm_certificate" "sentinel" {
+  count             = var.domain_name != "" ? 1 : 0
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+}
+
+resource "aws_route53_record" "sentinel_cert_validation" {
+  count   = var.domain_name != "" ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = aws_acm_certificate.sentinel[0].domain_validation_options[0].resource_record_name
+  type    = aws_acm_certificate.sentinel[0].domain_validation_options[0].resource_record_type
+  records = [aws_acm_certificate.sentinel[0].domain_validation_options[0].resource_record_value]
+  ttl     = 60
+}
+
+resource "aws_acm_certificate_validation" "sentinel" {
+  count                   = var.domain_name != "" ? 1 : 0
+  certificate_arn         = aws_acm_certificate.sentinel[0].arn
+  validation_record_fqdns = [aws_route53_record.sentinel_cert_validation[0].fqdn]
+}
+
+resource "aws_lb_listener" "https" {
+  count             = var.domain_name != "" ? 1 : 0
+  load_balancer_arn = aws_lb.sentinel.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = aws_acm_certificate_validation.sentinel[0].certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "api_https" {
+  count        = var.domain_name != "" ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*", "/ws/*"]
+    }
+  }
+}
 
 # ---------------------------------------------------------------------------
 # ECS services

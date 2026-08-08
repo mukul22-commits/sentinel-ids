@@ -13,7 +13,7 @@ for the ALB / ECS / database.
 | File          | Purpose                                                        |
 |---------------|----------------------------------------------------------------|
 | `main.tf`     | Provider, VPC, networking, SGs, ECR, ECS, ALB (single file)    |
-| `variables.tf`| region, vpc_cidr, env, tags                                    |
+| `variables.tf`| region, vpc_cidr, env, tags, domain_name, route53_zone_id     |
 | `outputs.tf`  | alb_dns_name, cluster_name, ecr_repo_url                      |
 
 ## Prerequisites
@@ -87,6 +87,25 @@ ElastiCache / RDS). The RDS security group is provisioned and a commented
 `aws_db_instance` block shows how to add managed Postgres - uncomment it and
 point `DATABASE_URL` at the RDS endpoint.
 
+## Enabling HTTPS (recommended for production)
+
+The ALB ships with an HTTP listener by default. To serve traffic over HTTPS,
+set the `domain_name` and `route53_zone_id` variables on apply. Terraform then
+creates an ACM certificate (DNS validation), a 443 HTTPS listener (frontend
+default + `/api`,`/ws` rule to the backend), and redirects all HTTP traffic to
+HTTPS:
+
+```bash
+terraform apply \
+  -var env=prod \
+  -var domain_name=ids.example.com \
+  -var route53_zone_id=Z1234567890ABCDEF
+```
+
+The certificate must live in the region the ALB is created in (use
+`us-east-1` for the default provider region). Point the domain's DNS (CNAME or
+A alias) at `alb_dns_name` once applied.
+
 ## Building and pushing images
 
 The task definitions reference `ECR_URL:backend` and `ECR_URL:frontend`.
@@ -106,9 +125,8 @@ aws ecs update-service --cluster <cluster_name> --service backend --force-new-de
 
 ## Caveats
 
-- TLS: the HTTP listener is created by default; the HTTPS listener + ACM
-  certificate are commented out in `main.tf`. Enable them once your domain is
-  validated.
+- TLS: without `domain_name` the ALB is HTTP-only. For production, enable
+  HTTPS via `domain_name` + `route53_zone_id` (see above).
 - Fargate networking requires private subnets to egress via the NAT gateways
   (one per AZ, costing money - drop to a single NAT for non-prod).
 - Backups: run the `scripts/` pg_dump helpers against the managed/self-hosted
