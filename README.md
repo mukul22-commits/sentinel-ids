@@ -3,39 +3,48 @@
 **Detect, Analyze, Respond – Secure Every Packet, Every Time.**
 
 Sentinel is an enterprise Network Intrusion Detection & Response (NIDS/NIDR) platform. This
-repository ships **Phase 1 (foundation)** and **Phase 2 (core backend)**. Detection logic and
-auth arrive in later phases.
+repository ships the full platform through **Phase 12**: core backend (auth, detection,
+incident response), a React SPA, fleet/sensor management, ML + UEBA analytics, and deploy
+artifacts (Docker Compose, Kubernetes, Terraform/AWS, CI/CD).
 
 ## Repository layout
 
 ```
 sentinel-ids/
-├── .github/workflows/ci.yml        # CI: lint, test, build
+├── .github/workflows/ci.yml        # CI: lint, test, build, security, e2e, load, zap
 ├── backend/                        # FastAPI + SQLAlchemy 2.0 (Python 3.12)
 │   ├── app/
 │   │   ├── main.py                 # app factory, middleware, /metrics
-│   │   ├── api/v1/                 # router aggregator + endpoints
-│   │   │   └── endpoints/          # health, system, packets, alerts
-│   │   ├── core/                   # config, logging, middleware, celery_app
-│   │   ├── models/                 # users, packets, alerts, rules, incidents, audit_logs, iocs
+│   │   ├── api/v1/                 # router aggregator + endpoint modules
+│   │   ├── core/                   # config, logging, middleware, celery_app, security
+│   │   ├── models/                 # users, packets, alerts, rules, incidents, iocs, sensors…
 │   │   ├── schemas/                # Pydantic v2 (incl. response Envelope)
-│   │   ├── services/               # cache helpers + service stubs
-│   │   ├── tasks/                  # demo.health_check Celery task
+│   │   ├── services/               # detection, connectors, cache, ml, ueba, yara
+│   │   ├── tasks/                  # Celery beat + queued tasks
 │   │   └── db/                     # async engine, session, DeclarativeBase
-│   ├── tests/                      # pytest (asyncio_mode=auto)
-│   ├── alembic/                    # async migrations (0001_initial_schema)
-│   ├── Dockerfile                  # multi-stage, non-root appuser
+│   ├── tests/                      # pytest (asyncio_mode=auto, ~100% route coverage)
+│   ├── alembic/                    # async migrations (0001…0008)
+│   ├── Dockerfile                  # multi-stage, non-root appuser + HEALTHCHECK
 │   ├── pyproject.toml              # Black / Ruff / mypy / pytest config
 │   └── requirements.txt            # pinned dependencies
-├── frontend/                       # React 19 + TypeScript + Vite + Tailwind v3
-│   ├── src/                        # main.tsx, App.tsx (ping via proxy), index.css
+├── frontend/                       # React 19 + TypeScript + Vite + Tailwind v4
+│   ├── src/                        # api client, auth, realtime, components, pages, hooks
 │   ├── vite.config.ts              # dev proxy /api, /ws -> localhost:8000
-│   └── Dockerfile
+│   ├── Dockerfile                  # dev (vite) + Dockerfile.prod (non-root nginx)
+│   └── nginx.conf                  # SPA + /api + /ws reverse proxy for prod image
 ├── infra/
-│   ├── docker-compose.yml          # postgres(Timescale), redis, backend, worker, flower, frontend
+│   ├── docker-compose.yml          # postgres(Timescale), redis, backend, worker, flower, frontend, observability
 │   ├── docker-compose.override.yml # dev hot-reload volumes
-│   └── postgres/init/              # timescaledb extension bootstrap
-├── docs/architecture.md            # v3.0 architecture + phase map
+│   ├── docker-compose.e2e.yml      # CI test/e2e rate-limit overrides
+│   ├── postgres/init/              # timescaledb extension bootstrap
+│   ├── prometheus|grafana|loki|promtail/  # observability configs + dashboards
+│   ├── k8s/                        # Kubernetes manifests
+│   ├── nginx/                      # standalone nginx reverse-proxy config
+│   └── terraform/aws/              # AWS: VPC, ECS Fargate, ALB (HTTP/HTTPS), ECR
+├── e2e/                            # Playwright end-to-end suite
+├── scripts/                        # helper tooling
+├── zap/                            # OWASP ZAP DAST policy
+├── docs/                           # architecture, security, deploy, load
 ├── .pre-commit-config.yaml
 └── Makefile                        # make up / lint / test / ...
 ```
@@ -170,8 +179,11 @@ HA note: scale the API with `UVICORN_WORKERS` (set `PROMETHEUS_MULTIPROC_DIR` fo
 multi-worker `/metrics` aggregation); the container runs migrations on boot and drains
 gracefully on shutdown.
 
-Frontend: open http://localhost:5173 — the shell shows the title, tagline, and "Backend says:
-‘pong’", proving the Vite dev proxy reaches FastAPI.
+Frontend: open http://localhost:5173 — sign in (register an account) and land on the
+Operations dashboard with incident KPIs, severity/status charts, and realtime WebSocket
+updates. See [docs/architecture.md](docs/architecture.md) for the phase roadmap,
+[e2e/README.md](e2e/README.md) for the Playwright suite, and
+[docs/deploy/README.md](docs/deploy/README.md) for deployment options.
 
 ## Celery worker & Flower
 
@@ -281,9 +293,12 @@ composite `(id, ts)`.
 
 `.github/workflows/ci.yml` runs on push to `main` and on pull requests:
 
-- **lint** — ruff, black --check, mypy (Python 3.12) + ESLint, Prettier, tsc (Node 22)
-- **test** — boots postgres + redis via docker compose, runs pytest (incl. DB round-trip)
-- **build** — `docker compose build` verifies both Dockerfiles
+- **lint** — ruff, black --check, mypy (Python 3.12) + ESLint, Prettier, tsc, frontend unit tests (Node 22)
+- **test** — boots postgres + redis via docker compose, runs the backend pytest suite
+- **build** — `docker compose build` verifies the dev images + builds the non-root `Dockerfile.prod`
+- **security** — gitleaks secret scan, Bandit SAST, Semgrep, pip-audit, npm audit, Trivy (backend + frontend)
+- **e2e** — Playwright against a live compose stack (chromium)
+- **load** / **zap** — manual-run Locust load test and ZAP DAST API scan (workflow_dispatch)
 
 ## Frontend stack note
 
@@ -296,6 +311,6 @@ Frontend runs **Tailwind v4** (v4.3) via the `@tailwindcss/vite` plugin — CSS-
 - **Backend shows `database: disconnected`** — postgres is still starting; wait for the healthcheck then `make logs` to confirm "Application startup complete".
 - **Worker not healthy** — confirm Redis is up; `celery inspect ping` needs the broker reachable.
 - **Hot reload not picking up changes** — confirm `docker-compose.override.yml` is next to `docker-compose.yml` and you started via `make up`.
-- **`AttributeError: '_IncludedRouter' object has no attribute 'path'` when running the test suite natively** — your local FastAPI is 0.116+ (e.g. on a Python 3.14 venv that resolves newer versions than the pinned CI set). Upgrade the instrumentator locally only: `pip install prometheus-fastapi-instrumentator==8.1.0`. `requirements.txt` stays at 7.0.0 for CI, where the pinned FastAPI 0.115.12 predates this routing change.
+- **Redis `NOAUTH` errors** — the compose Redis now requires the `REDIS_PASSWORD` (default `sentinel_redis`). Set `REDIS_PASSWORD` in your root `.env` and keep `REDIS_URL` in sync (`redis://:PASSWORD@redis:6379/0`).
 
 See [docs/architecture.md](docs/architecture.md) for the v3.0 architecture and phase roadmap.
