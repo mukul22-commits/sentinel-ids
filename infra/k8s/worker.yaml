@@ -1,0 +1,58 @@
+# Sentinel IDS - Celery worker.
+#
+# Uses the SAME image as the backend (backend/Dockerfile). The image entrypoint
+# (entrypoint.sh) execs whatever command is passed, so the worker runs the plain
+# Celery command below. Migrations are handled by the backend pod entrypoint
+# (alembic upgrade head) or a dedicated one-shot Job - see infra/k8s/README.md.
+#
+# No Service is needed: the worker only consumes from the Redis queue and is
+# never reached by clients.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+        app.kubernetes.io/name: sentinel-ids
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: worker
+          image: sentinel-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - app.core.celery_app
+            - worker
+            - --loglevel=info
+          envFrom:
+            - configMapRef:
+                name: sentinel-config
+            - secretRef:
+                name: sentinel-secrets
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # The worker's own heartbeat keeps Pod alive; active probes are not
+          # reliable for queue consumers. Ops can check Celery health via:
+          #   kubectl -n sentinel-ids exec deploy/worker -- \
+          #     celery -A app.core.celery_app inspect ping

@@ -1,0 +1,84 @@
+# Sentinel IDS - Redis (cache + Celery broker).
+#
+# Redis holds ephemeral cache entries and the Celery task queue. Data loss on
+# restart is acceptable (queue drains to Postgres); if persistence is required,
+# swap the emptyDir for a PVC and enable AOF persistence.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        app.kubernetes.io/name: sentinel-ids
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - redis-server
+            - --save
+            - "60"
+            - "1"
+            - --appendonly
+            - "yes"
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379

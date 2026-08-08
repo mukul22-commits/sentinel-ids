@@ -1,0 +1,97 @@
+# Sentinel IDS - backend API (FastAPI + uvicorn).
+#
+# Health endpoints (backend/app/api/v1/endpoints/health.py):
+#   /health       - always 200 while the process is up (compat probe)
+#   /health/ready - 503 unless PostgreSQL AND Redis are reachable
+#   /health/live  - always 200 while the process is alive
+#
+# Readiness uses /health/ready so pods are only in-service when dependencies
+# are available; liveness uses /health/live.
+#
+# Env vars come from the sentinel-config ConfigMap + sentinel-secrets Secret.
+# PROMETHEUS_MULTIPROC_DIR (/tmp/sentinel-prom) is shared by uvicorn workers via
+# the prom-multiproc emptyDir so Prometheus multiprocess metrics aggregate.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/name: sentinel-ids
+    spec:
+      # backend/Dockerfile runs as uid/gid 1001 (appuser).
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: backend
+          # Placeholder image: the CI pipeline publishes the backend image; point
+          # this at your registry (e.g. via kustomize `images` or a patch).
+          image: sentinel-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: sentinel-config
+            - secretRef:
+                name: sentinel-secrets
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: prom-multiproc
+              mountPath: /tmp/sentinel-prom
+      volumes:
+        - name: prom-multiproc
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

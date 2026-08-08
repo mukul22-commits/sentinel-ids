@@ -1,0 +1,45 @@
+# Sentinel IDS - non-secret configuration.
+#
+# The backend and worker consume the backend ConfigMap via envFrom. The
+# Postgres bootstrap ConfigMap (postgres-config) carries only non-secret
+# identity settings; the password lives in the sentinel-secrets Secret.
+#
+# NOTE: DATABASE_URL embeds the database password. Keep it in sync with the
+# POSTGRES_PASSWORD value in sentinel-secrets, or override DATABASE_URL via a
+# dedicated environment variable if you rotate the password.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-config
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+data:
+  DATABASE_URL: postgresql+asyncpg://sentinel:sentinel@postgres:5432/sentinel_ids
+  REDIS_URL: redis://redis:6379/0
+  LOG_LEVEL: INFO
+  SIEM_EXPORT_ENABLED: "false"
+  UVICORN_WORKERS: "2"
+  PROMETHEUS_MULTIPROC_DIR: /tmp/sentinel-prom
+  # Uncomment and set before a real deployment. ENVIRONMENT=prod enforces a
+  # strong SECRET_KEY (>= 32 chars), so sentinel-secrets must carry real values
+  # first.
+  # ENVIRONMENT: prod
+  # FRONTEND_URL: https://sentinel.example.com
+  # CORS_ORIGINS: '["https://sentinel.example.com"]'
+---
+# Postgres identity settings (non-secret). The POSTGRES_PASSWORD is deliberately
+# NOT here - it is injected from the sentinel-secrets Secret so it never appears
+# in a plaintext ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+data:
+  POSTGRES_USER: sentinel
+  POSTGRES_DB: sentinel_ids

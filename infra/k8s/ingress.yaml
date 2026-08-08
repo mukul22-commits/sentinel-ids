@@ -1,0 +1,64 @@
+# Sentinel IDS - ingress-nginx Ingress.
+#
+# Routes:
+#   /api  -> backend  :8000  (FastAPI lives under /api/v1/...)
+#   /ws   -> backend  :8000  (realtime WebSocket is /ws/incidents - see
+#                             backend/app/api/v1/routes/ws.py; it is NOT under
+#                             /api, so it gets its own path rule)
+#   /     -> frontend :80    (SPA)
+#
+# TLS terminates at the ingress using the sentinel-tls Secret (Certificate from
+# cert-manager, or a manually created TLS Secret). Long proxy timeouts are
+# required so WebSocket connections do not drop.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sentinel-ingress
+  namespace: sentinel-ids
+  labels:
+    app.kubernetes.io/name: sentinel-ids
+    app.kubernetes.io/part-of: sentinel-ids
+  annotations:
+    nginx.ingress.kubernetes.io/ingress-class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # WebSockets: ingress-nginx auto-detects the Upgrade header, but must know
+    # the upstream service so sticky/timeout tuning targets the right backend.
+    nginx.ingress.kubernetes.io/websocket-services: "backend"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Health checks from the ingress controller hit the backend liveness path.
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - sentinel.example.com
+      secretName: sentinel-tls
+  rules:
+    - host: sentinel.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
