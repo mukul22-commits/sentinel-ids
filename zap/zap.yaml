@@ -1,0 +1,103 @@
+# OWASP ZAP baseline / API scan configuration for Sentinel IDS v3
+#
+# Config consumed by zap-baseline.py, zap-full-scan.py and zap-api-scan.py
+# (the Docker image ghcr.io/zaproxy/zaproxy). Spiders are disabled because
+# this is an API scan; ZAP imports the OpenAPI spec at $TARGET_URL/openapi.json.
+#
+# Recommended Docker commands (run from the repo root; requires Docker - ZAP is
+# executed in CI against a staged compose stack, never on the local machine):
+#
+#   # API scan driven by the OpenAPI spec (preferred for Sentinel IDS)
+#   docker run -t --rm -e TARGET_URL=https://<host> \
+#     -v "$PWD/zap":/zap/wrk ghcr.io/zaproxy/zaproxy \
+#     sh -c 'zap-api-scan.py -t "$TARGET_URL/openapi.json" -f openapi \
+#       -c /zap/wrk/zap.yaml \
+#       -r /zap/wrk/report.html -J /zap/wrk/report.json -z "-X"'
+#
+#   # Baseline passive scan against the web root (covers the SPA + API)
+#   docker run -t --rm -e TARGET_URL=https://<host> \
+#     -v "$PWD/zap":/zap/wrk ghcr.io/zaproxy/zaproxy \
+#     sh -c 'zap-baseline.py -t "$TARGET_URL" -c /zap/wrk/zap.yaml \
+#       -r /zap/wrk/report.html -J /zap/wrk/report.json \
+#       -d -a -z "-X"'
+#
+#   # Full active scan (scheduled, not per-PR) against a staged stack
+#   docker run -t --rm -e TARGET_URL=https://<host> \
+#     -v "$PWD/zap":/zap/wrk ghcr.io/zaproxy/zaproxy \
+#     sh -c 'zap-full-scan.py -t "$TARGET_URL" -c /zap/wrk/zap.yaml \
+#       -r /zap/wrk/report.html -J /zap/wrk/report.json -d -a -z "-X"'
+#
+# TARGET_URL is the base of the staged host, e.g. https://staging.example.com.
+# CI substitutes the real host (or relies on -t) before invoking ZAP.
+
+env:
+  contexts:
+    # Placeholder host; CI replaces this with the real TARGET_URL, or the
+    # scanner's -t argument is authoritative. Spiders are disabled below, so
+    # this URL only seeds context for the passive/active scans.
+    - name: "sentinel-ids"
+      urls:
+        - "https://<TARGET_HOST>/"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+    format: JSON
+
+# API scan: disable both spiders (no crawling; import the OpenAPI spec instead).
+spider:
+  enabled: false
+  maxDuration: 0
+
+ajaxSpider:
+  enabled: false
+  maxDuration: 0
+
+# OpenAPI import: the backend serves its spec at /openapi.json (FastAPI
+# openapi_url, see backend/app/main.py). The API scanner imports it from
+# $TARGET_URL/openapi.json via '-t ... -f openapi'.
+openapi:
+  spec_path: /openapi.json
+
+rules:
+  # Passive-scan alert thresholds for Sentinel IDS.
+  # Values: OFF | LOW | MEDIUM | HIGH.
+  - id: 10096
+    name: "Timestamp Disclosure"
+    threshold: LOW
+  - id: 90022
+    name: "Application Error Disclosure"
+    threshold: MEDIUM
+  - id: 10038
+    name: "Content Security Policy (CSP) Header Not Set"
+    threshold: MEDIUM
+  - id: 10035
+    name: "Strict-Transport-Security Header Not Set"
+    threshold: LOW
+  - id: 10017
+    name: "CORS Header"
+    threshold: MEDIUM
+  - id: 10010
+    name: "Cookie No HttpOnly Flag"
+    threshold: LOW
+  - id: 10011
+    name: "Cookie Without Secure Flag"
+    threshold: MEDIUM
+  - id: 10054
+    name: "Cookie Without SameSite Attribute"
+    threshold: LOW
+  - id: 10021
+    name: "X-Content-Type-Options Header Missing"
+    threshold: LOW
+  - id: 10020
+    name: "X-Frame-Options Header Not Set"
+    threshold: LOW
+  - id: 10049
+    name: "Non-Storable Content"
+    threshold: LOW
+  - id: 10023
+    name: "Information Disclosure - Debug Error Messages"
+    threshold: MEDIUM
+  - id: 100000
+    name: "Server Header Information Leak"
+    threshold: LOW

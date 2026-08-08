@@ -1,0 +1,9 @@
+# CI overrides for end-to-end tests: lift per-IP auth rate limits so the
+# Playwright suite (dozens of register/login calls) is not throttled.
+# Use explicitly with: docker compose -f docker-compose.yml -f docker-compose.e2e.yml
+services:
+  backend:
+    environment:
+      ENVIRONMENT: test
+      RATE_LIMIT_AUTH: 1000/minute
+      RATE_LIMIT_API: 10000/minute

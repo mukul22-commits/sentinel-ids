@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # Nightly dependency + security baseline scan.
+    - cron: "0 4 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -109,3 +113,167 @@ jobs:
       - name: Build production frontend image
         working-directory: frontend
         run: docker build -f Dockerfile.prod -t sentinel-frontend:prod .
+
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Bandit SAST
+        working-directory: backend
+        run: |
+          pip install bandit
+          bandit -q -r app --severity-level high --confidence-level medium
+
+      - name: Semgrep
+        run: |
+          pip install semgrep
+          semgrep scan --config=auto --error --quiet backend/app frontend/src
+
+      - name: pip-audit dependencies
+        working-directory: backend
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      - name: npm audit
+        working-directory: frontend
+        run: npm audit --omit=dev
+
+      - name: Trivy backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: backend
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Trivy frontend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack via docker compose
+        working-directory: infra
+        run: |
+          cp ../.env.example ../.env
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait postgres redis backend frontend
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml ps
+
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health/live >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "API did not become healthy" >&2
+          exit 1
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: e2e
+        env:
+          E2E_BASE_URL: http://localhost:5173
+          E2E_API_URL: http://localhost:8000
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 14
+
+  load:
+    name: Load Test (Locust)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack via docker compose
+        working-directory: infra
+        run: |
+          cp ../.env.example ../.env
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait postgres redis backend
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml ps
+
+      - name: Run Locust
+        run: |
+          pip install locust
+          locust -f locustfile.py --host http://localhost:8000 \
+            --users 50 --spawn-rate 5 --run-time 5m --headless \
+            --html reports/load.html --csv reports/load
+
+      - name: Upload load report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-report
+          path: reports/
+          retention-days: 14
+
+  zap:
+    name: DAST (ZAP API Scan)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack via docker compose
+        working-directory: infra
+        run: |
+          cp ../.env.example ../.env
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait postgres redis backend
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml ps
+
+      - name: Run ZAP full scan
+        run: |
+          docker run --rm -t \
+            -v "$PWD/zap:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py \
+            -t http://host.docker.internal:8000/openapi.json \
+            -f openapi \
+            -c /zap/wrk/zap.yaml \
+            -r /zap/wrk/zap-report.html \
+            -j /zap/wrk/zap-report.json
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap/zap-report.*
+          retention-days: 14
