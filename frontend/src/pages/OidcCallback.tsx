@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { setTokens } from "../api/client";
 import { InlineError } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export default function OidcCallback() {
+  useDocumentTitle("Completing sign in");
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);

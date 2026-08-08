@@ -21,6 +21,7 @@ import type {
 import { SeverityBadge } from "../components/SeverityBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { InlineError, Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useIncidentEvents } from "../realtime/RealtimeContext";
 
 const SEVERITIES: IncidentSeverity[] = ["low", "medium", "high", "critical"];
@@ -36,6 +37,7 @@ const buttonClass =
 export default function IncidentDetail() {
   const { id: rawId } = useParams();
   const incidentId = Number(rawId);
+  useDocumentTitle(Number.isInteger(incidentId) ? `Incident #${incidentId}` : "Incident");
   const queryClient = useQueryClient();
 
   const incidentQuery = useQuery({

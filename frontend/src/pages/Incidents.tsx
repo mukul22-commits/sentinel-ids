@@ -6,6 +6,7 @@ import type { IncidentSeverity, IncidentStatus, Incident } from "../api/types";
 import { SeverityBadge } from "../components/SeverityBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { InlineError, Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useIncidentEvents } from "../realtime/RealtimeContext";
 
 const SEVERITIES: IncidentSeverity[] = ["low", "medium", "high", "critical"];
@@ -15,6 +16,7 @@ const inputClass =
   "rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 focus:border-emerald-500 focus:outline-hidden";
 
 export default function Incidents() {
+  useDocumentTitle("Incidents");
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<IncidentStatus | "">("");
   const [severity, setSeverity] = useState<IncidentSeverity | "">("");
@@ -140,6 +142,10 @@ export default function Incidents() {
             Create incident
           </button>
         </form>
+      )}
+
+      {query.isError && (
+        <InlineError message={query.error?.message ?? "Failed to load incidents"} />
       )}
 
       <section className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900">

@@ -9,7 +9,10 @@ import {
   updateSensor,
 } from "../api/endpoints";
 import type { Sensor, SensorStatus } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { InlineError, Spinner } from "../components/Spinner";
+import { useToast } from "../components/toast";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const STATUSES: SensorStatus[] = ["online", "offline", "disabled"];
 
@@ -23,7 +26,9 @@ const STATUS_STYLES: Record<SensorStatus, string> = {
 };
 
 export default function Fleet() {
+  useDocumentTitle("Fleet");
   const queryClient = useQueryClient();
+  const { success, error: toastError } = useToast();
   const [status, setStatus] = useState<SensorStatus | "">("");
   const [showRegister, setShowRegister] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -32,6 +37,7 @@ export default function Fleet() {
   const [ipAddress, setIpAddress] = useState("");
   const [registeredToken, setRegisteredToken] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<Sensor | null>(null);
 
   const sensorsQuery = useQuery({
     queryKey: ["sensors", "list", { status }],
@@ -64,19 +70,29 @@ export default function Fleet() {
 
   const toggleEnabled = useMutation({
     mutationFn: (sensor: Sensor) => updateSensor(sensor.id, { enabled: !sensor.enabled }),
-    onSuccess: () => invalidateSensors(),
+    onSuccess: (_result, sensor) => {
+      invalidateSensors();
+      success(`Sensor "${sensor.name}" ${sensor.enabled ? "disabled" : "enabled"}.`);
+    },
+    onError: (err: Error) => toastError(err.message),
   });
 
   const rotate = useMutation({
     mutationFn: (id: number) => rotateSensorToken(id),
-    onSuccess: (result) => setActionNotice(`New token for sensor: ${result.token}`),
+    onSuccess: (result) => {
+      setActionNotice(`New token for sensor: ${result.token}`);
+      success("Sensor token rotated.");
+    },
     onError: (err: Error) => setActionNotice(err.message),
   });
 
   const remove = useMutation({
     mutationFn: (id: number) => deleteSensor(id),
-    onSuccess: () => invalidateSensors(),
-    onError: (err: Error) => setActionNotice(err.message),
+    onSuccess: () => {
+      invalidateSensors();
+      success("Sensor deleted.");
+    },
+    onError: (err: Error) => toastError(err.message),
   });
 
   function handleRegister(event: FormEvent) {
@@ -90,10 +106,12 @@ export default function Fleet() {
     });
   }
 
-  function confirmRemove(sensor: Sensor) {
-    if (window.confirm(`Delete sensor "${sensor.name}"? This invalidates its token.`)) {
-      remove.mutate(sensor.id);
+  function handleRemove() {
+    if (!removeTarget) {
+      return;
     }
+    remove.mutate(removeTarget.id);
+    setRemoveTarget(null);
   }
 
   const summary = summaryQuery.data;
@@ -205,6 +223,10 @@ export default function Fleet() {
         />
       </section>
 
+      {sensorsQuery.isError && (
+        <InlineError message={sensorsQuery.error?.message ?? "Failed to load sensors"} />
+      )}
+
       <section className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900">
         <table className="w-full text-sm">
           <thead>
@@ -264,12 +286,25 @@ export default function Fleet() {
                 sensor={sensor}
                 onToggle={() => toggleEnabled.mutate(sensor)}
                 onRotate={() => rotate.mutate(sensor.id)}
-                onRemove={() => confirmRemove(sensor)}
+                onRemove={() => setRemoveTarget(sensor)}
               />
             ))}
           </tbody>
         </table>
       </section>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Delete sensor"
+        message={
+          removeTarget
+            ? `Delete sensor "${removeTarget.name}"? This invalidates its token and removes it from the fleet.`
+            : ""
+        }
+        confirmLabel="Delete sensor"
+        onConfirm={handleRemove}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }

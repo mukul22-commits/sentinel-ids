@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getOidcConfig, oidcAuthorize } from "../api/endpoints";
 import { InlineError } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type Mode = "signin" | "signup";
 
@@ -10,6 +11,7 @@ const inputClass =
   "w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-hidden focus:ring-1 focus:ring-emerald-500";
 
 export default function Login() {
+  useDocumentTitle("Sign in");
   const { status, login, register } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("signin");

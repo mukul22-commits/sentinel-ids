@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { createPolicy, deletePolicy, listPolicies, updatePolicy } from "../api/endpoints";
 import type { ActionTargetType, ActionType, PolicyConditions, ResponsePolicy } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { InlineError, Spinner } from "../components/Spinner";
+import { useToast } from "../components/toast";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const ACTION_TYPES: ActionType[] = ["block", "quarantine", "notify"];
 const TARGET_TYPES: ActionTargetType[] = ["ip", "port", "host", "email"];
@@ -43,13 +46,15 @@ function splitList(value: string): string[] {
 }
 
 export default function Policies() {
+  useDocumentTitle("Response policies");
   const queryClient = useQueryClient();
+  const { success, error: toastError } = useToast();
   const [filter, setFilter] = useState<"" | "true" | "false">("");
   const [editing, setEditing] = useState<ResponsePolicy | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<PolicyDraft>(emptyDraft);
   const [formError, setFormError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<ResponsePolicy | null>(null);
 
   const policiesQuery = useQuery({
     queryKey: ["policies", "list", { enabled: filter || undefined }],
@@ -104,20 +109,27 @@ export default function Policies() {
     onSuccess: () => {
       invalidate();
       resetForm();
+      success(editing ? "Policy updated." : "Policy created.");
     },
     onError: (err: Error) => setFormError(err.message),
   });
 
   const toggleEnabled = useMutation({
     mutationFn: (policy: ResponsePolicy) => updatePolicy(policy.id, { enabled: !policy.enabled }),
-    onSuccess: () => invalidate(),
-    onError: (err: Error) => setActionNotice(err.message),
+    onSuccess: (_result, policy) => {
+      invalidate();
+      success(`Policy "${policy.name}" ${policy.enabled ? "disabled" : "enabled"}.`);
+    },
+    onError: (err: Error) => toastError(err.message),
   });
 
   const remove = useMutation({
     mutationFn: (id: number) => deletePolicy(id),
-    onSuccess: () => invalidate(),
-    onError: (err: Error) => setActionNotice(err.message),
+    onSuccess: () => {
+      invalidate();
+      success("Policy deleted.");
+    },
+    onError: (err: Error) => toastError(err.message),
   });
 
   function handleSubmit(event: FormEvent) {
@@ -146,10 +158,12 @@ export default function Policies() {
     setShowForm(true);
   }
 
-  function confirmRemove(policy: ResponsePolicy) {
-    if (window.confirm(`Delete policy "${policy.name}"?`)) {
-      remove.mutate(policy.id);
+  function handleRemove() {
+    if (!removeTarget) {
+      return;
     }
+    remove.mutate(removeTarget.id);
+    setRemoveTarget(null);
   }
 
   const policies = policiesQuery.data?.items ?? [];
@@ -176,12 +190,6 @@ export default function Policies() {
           {showForm ? "Cancel" : editing ? "Edit policy" : "+ New policy"}
         </button>
       </header>
-
-      {actionNotice && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-          {actionNotice}
-        </div>
-      )}
 
       {showForm && (
         <PolicyForm
@@ -249,12 +257,25 @@ export default function Policies() {
                 policy={policy}
                 onToggle={() => toggleEnabled.mutate(policy)}
                 onEdit={() => beginEdit(policy)}
-                onRemove={() => confirmRemove(policy)}
+                onRemove={() => setRemoveTarget(policy)}
               />
             ))}
           </tbody>
         </table>
       </section>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Delete policy"
+        message={
+          removeTarget
+            ? `Delete policy "${removeTarget.name}"? This stops all automated actions it defines.`
+            : ""
+        }
+        confirmLabel="Delete policy"
+        onConfirm={handleRemove}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { getUebaStatus, getYaraStatus, reloadYaraRules, retrainUeba } from "../api/endpoints";
 import type { UebaStatus, YaraStatus } from "../api/types";
 import { InlineError, Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 function formatBytes(value: number | undefined): string {
   if (value === undefined) return "—";
@@ -35,6 +36,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function DetectionHealth() {
+  useDocumentTitle("Detection health");
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 

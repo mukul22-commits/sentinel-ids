@@ -12,7 +12,8 @@ import {
   testSiem,
 } from "../api/endpoints";
 import type { AutoencoderStatus, ConnectorStatus, MlStatus, SiemStatus } from "../api/types";
-import { Spinner } from "../components/Spinner";
+import { InlineError, Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 function formatBytes(value: number | undefined): string {
   if (value === undefined) return "—";
@@ -83,6 +84,7 @@ function ConnectorCard({
 }
 
 export default function SystemStatus() {
+  useDocumentTitle("System status");
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +164,9 @@ export default function SystemStatus() {
         </div>
       )}
       {notice && <ResultNotice result={notice} />}
+      {(connectorsQuery.isError || siemQuery.isError || mlQuery.isError) && (
+        <InlineError message="One or more system queries failed to load." />
+      )}
 
       <section>
         <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">

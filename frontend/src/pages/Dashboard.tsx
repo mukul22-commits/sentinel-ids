@@ -18,7 +18,8 @@ import type { IncidentSeverity } from "../api/types";
 import { useIncidentEvents } from "../realtime/RealtimeContext";
 import { SeverityBadge } from "../components/SeverityBadge";
 import { StatusBadge } from "../components/StatusBadge";
-import { Spinner } from "../components/Spinner";
+import { InlineError, Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const SEVERITY_ORDER: IncidentSeverity[] = ["low", "medium", "high", "critical"];
 const SEVERITY_COLORS: Record<IncidentSeverity, string> = {
@@ -38,6 +39,7 @@ const TOOLTIP_STYLE = {
 };
 
 export default function Dashboard() {
+  useDocumentTitle("Dashboard");
   const queryClient = useQueryClient();
 
   const incidentsQuery = useQuery({
@@ -78,6 +80,20 @@ export default function Dashboard() {
 
   if (incidentsQuery.isLoading) {
     return <Spinner label="Loading dashboard…" />;
+  }
+
+  if (incidentsQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight">Operations dashboard</h1>
+          <p className="text-sm text-slate-400">
+            Incident response overview, updated in real time.
+          </p>
+        </header>
+        <InlineError message={incidentsQuery.error?.message} />
+      </div>
+    );
   }
 
   return (

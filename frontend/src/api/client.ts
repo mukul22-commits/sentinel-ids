@@ -3,6 +3,8 @@ import type { Envelope } from "./types";
 export const ACCESS_TOKEN_KEY = "sentinel.access_token";
 export const REFRESH_TOKEN_KEY = "sentinel.refresh_token";
 
+const AUTH_REFRESH_PATH = "/api/v1/auth/refresh";
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -31,7 +33,17 @@ export function clearTokens(): void {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+let refreshPromise: Promise<boolean> | null = null;
+
+async function doFetch(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init);
+  } catch {
+    throw new ApiError("Backend unreachable", 0);
+  }
+}
+
+function buildHeaders(init: RequestInit): Headers {
   const headers = new Headers(init.headers);
   const token = getAccessToken();
   if (token) {
@@ -40,15 +52,64 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  return headers;
+}
 
-  let response: Response;
-  try {
-    response = await fetch(path, { ...init, headers });
-  } catch {
-    throw new ApiError("Backend unreachable", 0);
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    return false;
+  }
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = (async () => {
+    try {
+      const response = await doFetch(AUTH_REFRESH_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!response.ok) {
+        return false;
+      }
+      const payload = (await response.json().catch(() => null)) as Envelope<{
+        access_token: string;
+        refresh_token: string;
+      }> | null;
+      if (!payload || payload.success !== true || !payload.data) {
+        return false;
+      }
+      setTokens(payload.data);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
+function readPayload(response: Response): Promise<Envelope<unknown> | null> {
+  return response.json().catch(() => null);
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let headers = buildHeaders(init);
+  let response = await doFetch(path, { ...init, headers });
+
+  if (response.status === 401 && path !== AUTH_REFRESH_PATH) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      headers = buildHeaders(init);
+      response = await doFetch(path, { ...init, headers });
+    } else {
+      clearTokens();
+    }
   }
 
-  const payload = (await response.json().catch(() => null)) as Envelope<unknown> | null;
+  const payload = (await readPayload(response)) as Envelope<unknown> | null;
 
   if (!response.ok) {
     throw new ApiError(payload?.error ?? `Request failed (${response.status})`, response.status);
