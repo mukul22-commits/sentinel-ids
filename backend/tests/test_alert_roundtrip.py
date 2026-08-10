@@ -11,7 +11,10 @@ from app.models.alert import Alert
 
 async def _db_available() -> bool:
     try:
-        connection = await asyncpg.connect(settings.DATABASE_URL, timeout=3)
+        connection = await asyncpg.connect(
+            settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"),
+            timeout=3,
+        )
     except Exception:
         return False
     await connection.close()

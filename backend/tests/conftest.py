@@ -18,7 +18,20 @@ from typing import Any
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6390/0")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
+
+# Force the settings field falsy (env vars beat the .env file) so the
+# PROMETHEUS_MULTIPROC_DIR from the dev .env is ignored in tests, then drop
+# the env var again before prometheus_client is first imported. That keeps
+# tests on the single-process default registry (matching the pre-.env
+# baseline) instead of multiprocess mode, and avoids POSIX /tmp paths that
+# don't exist on Windows.
+os.environ["PROMETHEUS_MULTIPROC_DIR"] = ""
+
+import app.core.config as config_mod  # noqa: E402  (loads settings with falsy value)
+
 os.environ.pop("PROMETHEUS_MULTIPROC_DIR", None)
+os.environ.pop("prometheus_multiproc_dir", None)
+del config_mod
 
 import pytest  # noqa: E402
 from app.db.base import Base  # noqa: E402
@@ -132,14 +145,23 @@ def _make_pk_default(table_name: str) -> Any:
     return _next_pk
 
 
-def _patch_sqlite_tables(tables: list[Any]) -> None:
-    """Adapt PostgreSQL-oriented columns for the SQLite test database."""
+def _patch_sqlite_tables(tables: list[Any]) -> dict[Any, tuple[Any, Any, Any]]:
+    """Adapt PostgreSQL-oriented columns for the SQLite test database.
+
+    The shared ORM ``Table`` objects are mutated in place, so every changed
+    column is snapshotted (type, server_default, default) and the caller must
+    restore them afterwards. Without restoration the SQLite-specific types and
+    Python-side PK defaults leak into tests that hit the real PostgreSQL engine
+    (e.g. the DB round-trip tests), breaking type handling and PK generation.
+    """
     from sqlalchemy import DateTime, text
     from sqlalchemy.dialects.postgresql import JSONB
     from sqlalchemy.sql.schema import ColumnDefault, DefaultClause
 
+    snapshots: dict[Any, tuple[Any, Any, Any]] = {}
     for table in tables:
         for column in table.c.values():
+            snapshots[column] = (column.type, column.server_default, column.default)
             if "BIGINT" in str(column.type).upper():
                 column.type = Integer()
             elif isinstance(column.type, DateTime) and column.type.timezone:
@@ -152,6 +174,7 @@ def _patch_sqlite_tables(tables: list[Any]) -> None:
                 # give composite-PK identity columns (e.g. ``packets.id``) a
                 # Python-side generator so bulk inserts still assign ids.
                 column.default = ColumnDefault(_make_pk_default(table.name))
+    return snapshots
 
 
 @pytest.fixture
@@ -169,14 +192,20 @@ async def sqlite_db_factory() -> AsyncGenerator[Any, None]:
         json_deserializer=json.loads,
     )
     _pk_counters.clear()
-    _patch_sqlite_tables(SQLITE_MODEL_TABLES)
-    async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: Base.metadata.create_all(sync_conn, tables=SQLITE_MODEL_TABLES)
-        )
-    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    yield factory
-    await engine.dispose()
+    snapshots = _patch_sqlite_tables(SQLITE_MODEL_TABLES)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(
+                lambda sync_conn: Base.metadata.create_all(sync_conn, tables=SQLITE_MODEL_TABLES)
+            )
+        factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+        yield factory
+    finally:
+        for column, (type_, server_default, default) in snapshots.items():
+            column.type = type_
+            column.server_default = server_default
+            column.default = default
+        await engine.dispose()
 
 
 @pytest.fixture
