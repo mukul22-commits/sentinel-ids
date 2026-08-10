@@ -55,6 +55,7 @@ services:
       UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
       UVICORN_GRACEFUL_TIMEOUT: ${UVICORN_GRACEFUL_TIMEOUT:-30}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       PROMETHEUS_MULTIPROC_DIR: ${PROMETHEUS_MULTIPROC_DIR:-/tmp/sentinel-prom}
       SIEM_EXPORT_ENABLED: ${SIEM_EXPORT_ENABLED:-false}
       SIEM_CEF_ENDPOINT_URL: ${SIEM_CEF_ENDPOINT_URL:-}
@@ -96,6 +97,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD:-sentinel}@postgres:5432/${POSTGRES_DB:-sentinel_ids}
       REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       SIEM_EXPORT_ENABLED: ${SIEM_EXPORT_ENABLED:-false}
       SIEM_CEF_ENDPOINT_URL: ${SIEM_CEF_ENDPOINT_URL:-}
       SIEM_AUTH_TOKEN: ${SIEM_AUTH_TOKEN:-}

@@ -20,10 +20,13 @@ so all commands in these guides must be run from the target environment.
 
 ```bash
 cp .env.example .env
-cd infra && docker compose up -d --build
+# Compose reads .env next to the compose file (infra/), so point it at the
+# root .env with --env-file. Run from the repository root:
+docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 # postgres :5432, redis :6379, backend :8000, worker, frontend :5173,
 # prometheus :9090, grafana :3000, loki :3100
 curl -fsS http://localhost:8000/health
+# stop: docker compose --env-file .env -f infra/docker-compose.yml down
 ```
 
 ### Kubernetes
@@ -41,12 +44,11 @@ See `infra/k8s/README.md` for prerequisites, the secrets workflow, and the
 ### Bare metal reverse proxy
 
 ```bash
-cd infra && docker compose up -d        # stack on loopback :5173 / :8000
+docker compose --env-file .env -f infra/docker-compose.yml up -d  # stack on loopback :5173 / :8000
 sudo cp infra/nginx/nginx.conf /etc/nginx/nginx.conf
 # edit server_name + cert paths, then:
 sudo nginx -t && sudo systemctl reload nginx
 ```
-
 See `infra/nginx/README.md`.
 
 ### AWS / ECS
