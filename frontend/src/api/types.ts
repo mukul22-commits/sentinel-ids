@@ -215,3 +215,22 @@ export interface OidcAuthorize {
   url: string;
   state: string;
 }
+
+export interface Packet {
+  id: number;
+  src_ip: string;
+  src_port: number | null;
+  dst_ip: string;
+  dst_port: number | null;
+  proto: string;
+  length: number;
+  flags: string | null;
+  payload_hash: string | null;
+  raw_ref: string | null;
+  ts: string;
+}
+
+export interface PacketIngestSummary {
+  ingested: number;
+  alerts: number;
+}

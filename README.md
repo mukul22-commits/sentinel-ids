@@ -65,7 +65,7 @@ cp .env.example .env
 cp backend/.env.example backend/.env        # optional; matches defaults
 
 # 2. Start everything (postgres, redis, worker, backend, frontend)
-make up                     # or: docker compose -f infra/docker-compose.yml up -d --build
+make up                     # or: docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 
 # 3. Apply the initial migration
 make backend-shell          # then inside the container:

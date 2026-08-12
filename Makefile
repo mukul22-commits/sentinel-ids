@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-COMPOSE := docker compose -f infra/docker-compose.yml
+COMPOSE := docker compose --env-file .env -f infra/docker-compose.yml
 
 .PHONY: help up down logs backend-shell lint test format build
 

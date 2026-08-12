@@ -13,6 +13,8 @@ import type {
   Notification,
   OidcAuthorize,
   OidcConfig,
+  Packet,
+  PacketIngestSummary,
   Paginated,
   PolicyConditions,
   ResponseAction,
@@ -309,6 +311,35 @@ export async function getOidcConfig(): Promise<OidcConfig> {
 
 export async function oidcAuthorize(): Promise<OidcAuthorize> {
   return api.get<OidcAuthorize>(`${BASE}/auth/oidc/authorize`);
+}
+
+export interface PacketQuery {
+  src_ip?: string;
+  dst_ip?: string;
+  proto?: string;
+  since?: string;
+  until?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export async function listPackets(query: PacketQuery = {}): Promise<Paginated<Packet>> {
+  const params = new URLSearchParams();
+  if (query.src_ip) params.set("src_ip", query.src_ip);
+  if (query.dst_ip) params.set("dst_ip", query.dst_ip);
+  if (query.proto) params.set("proto", query.proto);
+  if (query.since) params.set("since", query.since);
+  if (query.until) params.set("until", query.until);
+  if (query.page) params.set("page", String(query.page));
+  if (query.page_size) params.set("page_size", String(query.page_size));
+  const qs = params.toString();
+  return api.get<Paginated<Packet>>(`${BASE}/packets${qs ? `?${qs}` : ""}`);
+}
+
+export async function importPcap(file: File): Promise<PacketIngestSummary> {
+  const form = new FormData();
+  form.append("file", file);
+  return api.upload<PacketIngestSummary>(`${BASE}/packets/import`, form);
 }
 
 export const ACTION_STATUSES: ActionStatus[] = ["pending", "executing", "succeeded", "failed"];

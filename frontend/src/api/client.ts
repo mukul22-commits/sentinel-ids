@@ -49,7 +49,7 @@ function buildHeaders(init: RequestInit): Headers {
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  if (init.body !== undefined && !headers.has("Content-Type")) {
+  if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   return headers;
@@ -131,4 +131,6 @@ export const api = {
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   postEmpty: <T>(path: string): Promise<T> => request<T>(path, { method: "POST" }),
   del: <T>(path: string): Promise<T> => request<T>(path, { method: "DELETE" }),
+  upload: <T>(path: string, formData: FormData): Promise<T> =>
+    request<T>(path, { method: "POST", body: formData }),
 };

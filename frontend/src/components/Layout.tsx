@@ -14,6 +14,7 @@ interface NavLinkDef {
 const NAV_LINKS: NavLinkDef[] = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/incidents", label: "Incidents" },
+  { to: "/packets", label: "Packets" },
   { to: "/fleet", label: "Fleet", roles: ["admin"] },
   { to: "/policies", label: "Policies", roles: ["admin"] },
   { to: "/system", label: "System", roles: ["admin"] },

@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
@@ -9,11 +11,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: backendUrl,
         changeOrigin: true,
       },
       "/ws": {
-        target: "ws://localhost:8000",
+        target: backendUrl.replace(/^http/, "ws"),
         ws: true,
       },
     },

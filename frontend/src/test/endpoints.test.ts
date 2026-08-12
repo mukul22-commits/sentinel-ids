@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPolicy,
   getOidcConfig,
+  importPcap,
   listConnectors,
+  listPackets,
   listPolicies,
   oidcAuthorize,
   retrainMl,
@@ -99,6 +101,42 @@ describe("system endpoints", () => {
     await retrainMl();
     expect(calls[0].url).toBe(`${BASE}/system/ml/retrain`);
     expect(calls[0].method).toBe("POST");
+  });
+});
+
+describe("packet endpoints", () => {
+  it("builds a filtered packet list URL", async () => {
+    const calls = mockFetch({ items: [], total: 0, page: 1, page_size: 50 });
+    await listPackets({ src_ip: "10.0.0.1", proto: "tcp", page: 2 });
+    expect(calls[0].url).toBe(`${BASE}/packets?src_ip=10.0.0.1&proto=tcp&page=2`);
+    expect(calls[0].method).toBe("GET");
+  });
+
+  it("omits packet filters when not provided", async () => {
+    const calls = mockFetch({ items: [], total: 0, page: 1, page_size: 50 });
+    await listPackets();
+    expect(calls[0].url).toBe(`${BASE}/packets`);
+  });
+
+  it("uploads a pcap as multipart form data", async () => {
+    const calls: Array<{ url: string; method: string; body: BodyInit | null | undefined }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body,
+        });
+        return jsonResponse({ ingested: 5, alerts: 2 });
+      }),
+    );
+    const file = new File(["data"], "capture.pcap", { type: "application/octet-stream" });
+    const result = await importPcap(file);
+    expect(calls[0].url).toBe(`${BASE}/packets/import`);
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].body).toBeInstanceOf(FormData);
+    expect(result).toEqual({ ingested: 5, alerts: 2 });
   });
 });
 

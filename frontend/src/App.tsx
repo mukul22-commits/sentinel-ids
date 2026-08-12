@@ -12,6 +12,7 @@ const IncidentDetail = lazy(() => import("./pages/IncidentDetail"));
 const Incidents = lazy(() => import("./pages/Incidents"));
 const Login = lazy(() => import("./pages/Login"));
 const OidcCallback = lazy(() => import("./pages/OidcCallback"));
+const Packets = lazy(() => import("./pages/Packets"));
 const Policies = lazy(() => import("./pages/Policies"));
 const SystemStatus = lazy(() => import("./pages/SystemStatus"));
 
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/incidents" element={<Incidents />} />
           <Route path="/incidents/:id" element={<IncidentDetail />} />
           <Route path="/fleet" element={<Fleet />} />
+          <Route path="/packets" element={<Packets />} />
           <Route path="/policies" element={<Policies />} />
           <Route path="/system" element={<SystemStatus />} />
           <Route path="/detection" element={<DetectionHealth />} />
